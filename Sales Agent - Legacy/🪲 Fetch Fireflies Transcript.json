@@ -1,0 +1,226 @@
+{
+  "name": "🪲 Fetch Fireflies Transcript",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Fetch & Save Raw Fireflies Transcripts\n\n- Use `meeting_id`\n- Returns both new and duplicates",
+        "height": 460,
+        "width": 1020,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        1808
+      ],
+      "id": "9e37da2d-2c18-45aa-94e2-bb983d43b7db",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract all possible speaker emails (safe against missing or nulls)\nconst userEmail = $json?.data?.transcript?.user?.email || '';\nconst participants = $json?.data?.transcript?.participants || [];\n\n// Combine as string array, split in case any have multiple comma-separated emails\nconst emails = [\n  userEmail,\n  ...participants\n].flatMap(item =>\n  typeof item === 'string'\n    ? item.split(',').map(e => e.trim())\n    : []\n).filter(e => e); // Remove empty strings\n\n// Deduplicate using Set\nconst consolidatedSpeakers = [...new Set(emails)];\n\n// Safely build summary field\nlet summary = null;\nconst summaryObj = $json?.data?.transcript?.summary;\nif (summaryObj && typeof summaryObj === 'object') {\n  if (summaryObj.gist) {\n    summary = summaryObj.gist;\n  } else if (summaryObj.short_summary) {\n    summary = summaryObj.short_summary.slice(0, 150) + '…';\n  }\n}\n\n// Use n8n's built-in DateTime or default to new Date()\nconst dateString = $json?.data?.transcript?.dateString;\nlet formattedDate = null;\ntry {\n  formattedDate = DateTime.fromISO(dateString).toFormat('yyyy-MM-dd HH:mm');\n} catch (e) {\n  formattedDate = dateString || null;\n}\n\nreturn {\n  meeting: {\n    id: $json?.id || null,\n    date: formattedDate,\n    title: $json?.data?.transcript?.title || null,\n    summary,\n    speakers: consolidatedSpeakers,\n    source_id: $json?.data?.transcript?.id || null,\n    operation: 'duplicate'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        2128
+      ],
+      "id": "a3a93837-dc1f-4dda-a852-530d6607d5c2",
+      "name": "Duplicate"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Safely extract speaker emails, handling missing/null data\nconst userEmail = $json?.raw_data?.user?.email;\nconst participants = Array.isArray($json?.raw_data?.participants) ? $json.raw_data.participants : [];\n\n// Combine user email and participant emails, splitting in case any are comma-separated\nconst emailsRaw = [\n  ...(typeof userEmail === 'string' ? [userEmail] : []),\n  ...participants\n];\n\nconst speakers = [\n  ...new Set(\n    emailsRaw\n      .flatMap(e =>\n        typeof e === 'string'\n          ? e.split(',').map(email => email.trim())\n          : []\n      )\n      .filter(Boolean)\n  )\n];\n\n// Summary fallback logic: gist > short_summary (first 150 chars) > null\nlet summary = null;\nconst summaryObj = $json?.raw_data?.summary;\nif (summaryObj && typeof summaryObj === 'object') {\n  if (summaryObj.gist) {\n    summary = summaryObj.gist;\n  } else if (summaryObj.short_summary) {\n    summary = summaryObj.short_summary.slice(0, 150) + '…';\n  }\n}\n\n// Date parsing/formatting with fallback\nlet meetingDate = null;\ntry {\n  meetingDate = DateTime.fromISO($json?.date).toFormat('yyyy-MM-dd HH:mm');\n} catch {\n  meetingDate = $json?.date || null;\n}\n\nreturn {\n  meeting: {\n    id: $json?.id || null,\n    date: meetingDate,\n    title: $json?.title || null,\n    summary,\n    speakers,\n    source_id: $json?.source_id || null,\n    operation: 'success'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        1840
+      ],
+      "id": "69bae3e7-1a55-4feb-9421-ab82ff54cdc2",
+      "name": "Success"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "meeting_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        2128,
+        1984
+      ],
+      "id": "f7f1ffb1-d32e-4d35-ad77-02f4fe97dba7",
+      "name": "Meeting id"
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "endpoint": "https://api.fireflies.ai/graphql",
+        "query": "=query Transcript {\n  transcript(\n    id: \"{{ $json.meeting_id }}\"\n  ) {\n      id\n      dateString\n      date\n      title\n      duration\n      meeting_link\n      transcript_url\n      audio_url\n      video_url\n      speakers {\n        id\n        name\n      }\n      participants\n      user {\n        user_id\n        email\n        name\n      }\n      summary {\n        keywords\n        action_items\n        outline\n        shorthand_bullet\n        overview\n        bullet_gist\n        gist\n        short_summary\n        short_overview\n        meeting_type\n        topics_discussed\n        transcript_chapters\n      }\n      analytics {\n        sentiments {\n          negative_pct\n          neutral_pct\n          positive_pct\n        }\n        categories {\n          questions\n          date_times\n          metrics\n          tasks\n        }\n        speakers {\n          speaker_id\n          name\n          duration\n          word_count\n          longest_monologue\n          monologues_count\n          filler_words\n          questions\n          duration_pct\n          words_per_minute\n        }\n      }\n      sentences {\n        index\n        start_time\n        speaker_id\n        speaker_name\n        text\n        ai_filters {\n          text_cleanup\n          sentiment\n        }\n      }\n    }\n}\n"
+      },
+      "type": "n8n-nodes-base.graphql",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        1984
+      ],
+      "id": "bfc673fb-bbbb-4cb7-bb66-762e63daa0ed",
+      "name": "Get full transcript",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 2,
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "FROfCaqOfdWtfbmO",
+          "name": "Fireflies GraphQL"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "From Fireflies GraphQL"
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_fireflies",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source_id",
+              "fieldValue": "={{ $json.data.transcript.id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.data.transcript.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.data.transcript.dateString }}"
+            },
+            {
+              "fieldId": "raw_data",
+              "fieldValue": "={{ $json.data.transcript }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "fireflies"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        1984
+      ],
+      "id": "99c53d8b-59d2-4136-8ac7-230c2d41102c",
+      "name": "Save raw transcript",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "alwaysOutputData": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "transcripts_fireflies"
+    }
+  ],
+  "pinData": {
+    "Meeting id": [
+      {
+        "json": {
+          "meeting_id": "01JZK270DE9HZC3WGM77V0ZS4N"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Duplicate": {
+      "main": [
+        []
+      ]
+    },
+    "Success": {
+      "main": [
+        []
+      ]
+    },
+    "Meeting id": {
+      "main": [
+        [
+          {
+            "node": "Get full transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get full transcript": {
+      "main": [
+        [
+          {
+            "node": "Save raw transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save raw transcript": {
+      "main": [
+        [
+          {
+            "node": "Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "c025db69-c779-4e19-bf12-b54f40d0c0fe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "GwO5H0q2hYct0hZw",
+  "tags": [
+    {
+      "updatedAt": "2025-07-09T19:54:29.691Z",
+      "createdAt": "2025-07-09T19:54:29.691Z",
+      "id": "Ng50sY6AM8PDOTHE",
+      "name": "Subworkflow"
+    }
+  ]
+}

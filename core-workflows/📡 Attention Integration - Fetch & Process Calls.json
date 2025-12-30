@@ -1,0 +1,608 @@
+{
+  "name": "📡 Attention Integration - Fetch & Process Calls",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2b0d756a-19e6-4263-8aad-4b42f8cdbd11",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -660,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate date range for last 48 hours\nconst today = new Date();\nconst twoDaysAgo = new Date(today);\ntwoDaysAgo.setHours(today.getHours() - 48);\n\n// Format as ISO strings\nconst dateFrom = twoDaysAgo.toISOString();\nconst dateTo = today.toISOString();\n\nreturn {\n  json: {\n    dateFrom,\n    dateTo,\n    description: `Fetching calls from last 48 hours (${twoDaysAgo.toLocaleString()} to ${today.toLocaleString()})`\n  }\n};"
+      },
+      "id": "calc-date-range",
+      "name": "Calculate Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.attention.tech/v2/conversations?size=50&dateFrom={{ encodeURIComponent($json.dateFrom) }}&dateTo={{ encodeURIComponent($json.dateTo) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fc5bd3a1-7025-40c2-b7d5-5bd58efcb1e9",
+      "name": "Fetch Page 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        256
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WL1rAOPYyCHlSGDz",
+          "name": "Attention API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if we need more pages\nconst response = $input.first().json;\nconst meta = response.meta || {};\nconst pageCount = meta.pageCount || 1;\nconst currentPage = meta.pageNumber || 1;\nconst totalRecords = meta.totalRecords || 0;\nconst pageSize = meta.pageSize || 50;\n\nconsole.log(`Page ${currentPage} of ${pageCount}, Total records: ${totalRecords}`);\n\n// Store first page data\nconst firstPageData = response.data || [];\n\n// Calculate remaining pages to fetch (up to reasonable limit)\nconst maxPages = Math.min(pageCount, 20); // Limit to 20 pages max (1000 records with size=50)\nconst remainingPages = [];\n\nfor (let p = 2; p <= maxPages; p++) {\n  remainingPages.push(p);\n}\n\nreturn {\n  json: {\n    firstPageData,\n    remainingPages,\n    totalPages: pageCount,\n    totalRecords,\n    needsMorePages: remainingPages.length > 0\n  }\n};"
+      },
+      "id": "check-pagination",
+      "name": "Check Pagination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "needs-more-pages",
+              "leftValue": "={{ $json.needsMorePages }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        256
+      ],
+      "id": "needs-more-pages-check",
+      "name": "Needs More Pages?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare page numbers for fetching\nconst data = $input.first().json;\nconst pages = data.remainingPages || [];\n\n// Return one item per page to fetch\nreturn pages.map(pageNum => ({\n  json: {\n    pageNumber: pageNum,\n    firstPageData: data.firstPageData\n  }\n}));"
+      },
+      "id": "prepare-page-requests",
+      "name": "Prepare Page Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.attention.tech/v2/conversations?size=50&page={{ $json.pageNumber }}&dateFrom={{ encodeURIComponent($('Calculate Date Range').item.json.dateFrom) }}&dateTo={{ encodeURIComponent($('Calculate Date Range').item.json.dateTo) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fetch-additional-pages",
+      "name": "Fetch Additional Pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "WL1rAOPYyCHlSGDz",
+          "name": "Attention API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine first page data with additional pages\nconst additionalPages = $input.all();\n\n// Get first page data from the Check Pagination node\nconst checkPaginationData = $('Check Pagination').first().json;\nlet allConversations = [...(checkPaginationData.firstPageData || [])];\n\n// Add data from additional pages\nfor (const page of additionalPages) {\n  const pageData = page.json.data || [];\n  allConversations = allConversations.concat(pageData);\n}\n\nconsole.log(`Combined ${allConversations.length} total conversations from all pages`);\n\nreturn {\n  json: {\n    data: allConversations,\n    totalFetched: allConversations.length\n  }\n};"
+      },
+      "id": "combine-all-pages",
+      "name": "Combine All Pages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// If no additional pages needed, just pass through first page data\nconst data = $input.first().json;\n\nreturn {\n  json: {\n    data: data.firstPageData || [],\n    totalFetched: (data.firstPageData || []).length\n  }\n};"
+      },
+      "id": "use-first-page-only",
+      "name": "Use First Page Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge-paths",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1120,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract conversations from merged data\nconst response = $input.first().json;\n\nlet allConversations = [];\nif (response.data && Array.isArray(response.data)) {\n  allConversations = response.data;\n} else if (Array.isArray(response)) {\n  allConversations = response;\n}\n\nconsole.log(`\\n=== ATTENTION API FETCH RESULTS ===`);\nconsole.log(`Total conversations from API: ${allConversations.length}`);\n\n// Filter and transform - only \"Thatch and...\" calls\nconst results = [];\nconst captured = [];\nconst skipped = [];\n\nfor (let i = 0; i < allConversations.length; i++) {\n  const conv = allConversations[i];\n  const attrs = conv.attributes || {};\n  \n  const callTitle = attrs.title || `Call ${i + 1}`;\n  const callId = conv.id;\n  \n  // FILTER: Only include \"Thatch and...\" calls\n  if (!callTitle.toLowerCase().startsWith('thatch and')) {\n    skipped.push(callTitle);\n    continue;\n  }\n  \n  captured.push(callTitle);\n  \n  const callDate = attrs.createdAt || new Date().toISOString();\n  const durationSeconds = Math.round(attrs.mediaDuration || 0);\n  const transcriptText = attrs.transcript || '';\n  \n  // Extract participants\n  const participants = attrs.attendees || [];\n  const speakers = participants.map((p, idx) => ({\n    id: idx,\n    name: p.name || `Participant ${idx + 1}`,\n    email: p.email || '',\n    role: p.email?.includes('thatch') ? 'Seller' : 'Prospect',\n    organization: p.email?.includes('thatch') ? 'Thatch' : ''\n  }));\n  \n  if (attrs.user) {\n    const aeName = `${attrs.user.firstName || ''} ${attrs.user.lastName || ''}`.trim();\n    const aeEmail = attrs.user.email || '';\n    if (aeName && !speakers.some(s => s.email === aeEmail)) {\n      speakers.push({\n        id: speakers.length,\n        name: aeName,\n        email: aeEmail,\n        role: 'Seller',\n        organization: 'Thatch'\n      });\n    }\n  }\n  \n  // Parse transcript into segments\n  const segments = [];\n  if (transcriptText) {\n    const lines = transcriptText.split('\\n');\n    let currentSpeaker = '';\n    let currentText = '';\n    let segmentIndex = 0;\n    \n    for (const line of lines) {\n      if (line.endsWith(':') && line.length < 50) {\n        if (currentSpeaker && currentText.trim()) {\n          segments.push({\n            index: segmentIndex++,\n            speaker_name: currentSpeaker,\n            text: currentText.trim(),\n            start_time: 0,\n            end_time: 0\n          });\n        }\n        currentSpeaker = line.slice(0, -1);\n        currentText = '';\n      } else {\n        currentText += line + ' ';\n      }\n    }\n    if (currentSpeaker && currentText.trim()) {\n      segments.push({\n        index: segmentIndex++,\n        speaker_name: currentSpeaker,\n        text: currentText.trim(),\n        start_time: 0,\n        end_time: 0\n      });\n    }\n  }\n  \n  // Determine call type\n  let callType = 'Prospect discovery';\n  const labels = attrs.labels || {};\n  if (labels['MM Call Types']?.includes('quoting')) {\n    callType = 'Negotiation / Closing';\n  } else if (callTitle.toLowerCase().includes('demo')) {\n    callType = 'Demo / Product walkthrough';\n  } else if (callTitle.toLowerCase().includes('onboarding')) {\n    callType = 'Onboarding';\n  }\n  \n  const teamId = 'c3ed8a52-5be2-4f21-9e32-ddc8f8cb93ce';\n  \n  results.push({\n    json: {\n      source: 'attention',\n      source_id: callId,\n      source_url: `https://app.attention.tech/conversations/${callId}`,\n      title: callTitle,\n      date: callDate,\n      duration_seconds: durationSeconds,\n      raw_data: { conversation: conv },\n      team_id: teamId,\n      is_processed: false,\n      \n      processed: {\n        title: callTitle,\n        date: callDate,\n        duration_seconds: durationSeconds,\n        type: callType,\n        speakers: speakers,\n        segments: segments,\n        accounts: [],\n        sentiment: null,\n        analytics: null,\n        team_id: teamId,\n        is_valid: true,\n        is_summarized: false\n      },\n      \n      transcript_text: transcriptText,\n      call_id: callId\n    }\n  });\n}\n\n// Log summary\nconsole.log(`\\n=== FILTER SUMMARY ===`);\nconsole.log(`Total from API: ${allConversations.length}`);\nconsole.log(`Thatch calls captured: ${captured.length}`);\nconsole.log(`Non-Thatch calls skipped: ${skipped.length}`);\n\nif (results.length > 0) {\n  results[0].json._summary = {\n    total_from_api: allConversations.length,\n    captured_count: captured.length,\n    skipped_count: skipped.length\n  };\n}\n\nif (results.length === 0) {\n  return [{\n    json: {\n      _status: 'NO_THATCH_CALLS',\n      message: 'No Thatch calls found in Attention for the last 30 days',\n      total_from_api: allConversations.length,\n      skipped: skipped.length\n    }\n  }];\n}\n\nreturn results;"
+      },
+      "id": "3eba84c7-044f-402c-a462-498abc41f782",
+      "name": "Transform & Filter Thatch Calls",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-calls-to-save",
+              "leftValue": "={{ $json._status }}",
+              "rightValue": "NO_THATCH_CALLS",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        256
+      ],
+      "id": "c783422e-f741-4479-9b84-91628f5bc836",
+      "name": "Has Calls to Save?"
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_raw",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "source_id",
+              "fieldValue": "={{ $json.source_id }}"
+            },
+            {
+              "fieldId": "source_url",
+              "fieldValue": "={{ $json.source_url }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.date }}"
+            },
+            {
+              "fieldId": "duration_seconds",
+              "fieldValue": "={{ $json.duration_seconds }}"
+            },
+            {
+              "fieldId": "raw_data",
+              "fieldValue": "={{ $json.raw_data }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "={{ $json.team_id }}"
+            },
+            {
+              "fieldId": "is_processed",
+              "fieldValue": "={{ $json.is_processed }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ee62eb01-a2ad-4cde-b7cd-108d00a3000d",
+      "name": "Save to transcripts_raw",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_processed",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.processed.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.processed.date }}"
+            },
+            {
+              "fieldId": "duration_seconds",
+              "fieldValue": "={{ $json.processed.duration_seconds }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "={{ $json.processed.type }}"
+            },
+            {
+              "fieldId": "speakers",
+              "fieldValue": "={{ $json.processed.speakers }}"
+            },
+            {
+              "fieldId": "segments",
+              "fieldValue": "={{ $json.processed.segments }}"
+            },
+            {
+              "fieldId": "accounts",
+              "fieldValue": "={{ $json.processed.team_id }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "={{ $json.processed.team_id }}"
+            },
+            {
+              "fieldId": "is_valid",
+              "fieldValue": "={{ $json.processed.is_valid }}"
+            },
+            {
+              "fieldId": "is_summarized",
+              "fieldValue": "={{ $json.processed.is_summarized }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1bfc5ffa-938b-496f-96ec-100978da125a",
+      "name": "Save to transcripts_processed",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1792,
+        352
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $('Transform & Filter Thatch Calls').all().filter(i => !i.json._status);\n\nreturn {\n  json: {\n    status: '✅ SUCCESS',\n    message: 'Attention calls imported successfully!',\n    calls_processed: allItems.length,\n    titles: allItems.slice(0, 20).map(i => i.json.title),\n    note: allItems.length > 20 ? `... and ${allItems.length - 20} more` : '',\n    next_steps: [\n      '1. Run Transcript Summarizer workflow to generate AI summaries',\n      '2. Run RAG Pipeline workflow to create vector embeddings',\n      '3. Ask the Sales Agent questions about these calls'\n    ]\n  }\n};"
+      },
+      "id": "cb7cab34-1adc-4860-8df8-81b9aba7c10e",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/trigger-summarizer",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2240,
+        352
+      ],
+      "id": "8396e263-e766-4466-9deb-1dc27c0ceea0",
+      "name": "Trigger Summarizer"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/sales-agent-stats",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2464,
+        352
+      ],
+      "id": "2628b578-19a2-45ce-b17f-d7656c542e82",
+      "name": "Agent stats webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: 'ℹ️ NO CALLS FOUND',\n    message: 'No Thatch calls found in Attention for the last 30 days',\n    next_steps: [\n      'Check if there are calls in Attention with titles starting with \"Thatch and...\"',\n      'Verify the date range is correct'\n    ]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        480
+      ],
+      "id": "no-new-records-output",
+      "name": "No Calls Found Output"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Calculate Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Date Range": {
+      "main": [
+        [
+          {
+            "node": "Fetch Page 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Page 1": {
+      "main": [
+        [
+          {
+            "node": "Check Pagination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pagination": {
+      "main": [
+        [
+          {
+            "node": "Needs More Pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs More Pages?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Page Requests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Use First Page Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Page Requests": {
+      "main": [
+        [
+          {
+            "node": "Fetch Additional Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Additional Pages": {
+      "main": [
+        [
+          {
+            "node": "Combine All Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine All Pages": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use First Page Only": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Transform & Filter Thatch Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform & Filter Thatch Calls": {
+      "main": [
+        [
+          {
+            "node": "Has Calls to Save?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Calls to Save?": {
+      "main": [
+        [
+          {
+            "node": "Save to transcripts_raw",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save to transcripts_processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Calls Found Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to transcripts_raw": {
+      "main": [
+        []
+      ]
+    },
+    "Save to transcripts_processed": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Output": {
+      "main": [
+        [
+          {
+            "node": "Trigger Summarizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Summarizer": {
+      "main": [
+        [
+          {
+            "node": "Agent stats webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ab15731e-4371-4e39-af36-aa2005de0e08",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2836d9e4518bfffa2046de9ef15541915a1919fc5bdfe33324d3be96e8a0f05"
+  },
+  "id": "dxgh9eW2vEpvRYdg",
+  "tags": [
+    {
+      "updatedAt": "2025-12-02T03:20:38.974Z",
+      "createdAt": "2025-12-02T03:20:38.974Z",
+      "id": "jLHt9WYmRv0H8XzL",
+      "name": "Sales Agent"
+    }
+  ]
+}

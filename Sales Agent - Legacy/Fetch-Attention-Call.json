@@ -1,0 +1,128 @@
+{
+  "name": "📞 Fetch Attention Call",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "call_id",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "id": "trigger",
+      "name": "Call ID Input"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.attention.tech/v1/calls/{{ $json.call_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "id": "fetch-call",
+      "name": "Fetch from Attention API"
+    },
+    {
+      "parameters": {
+        "jsCode": "const attention = $json;\n\n// Extract and format speakers/participants\nconst speakers = (attention.participants || []).map((p, idx) => ({\n  id: idx,\n  name: p.name || 'Unknown',\n  email: p.email || null,\n  role: p.role === 'customer' || p.role === 'prospect' ? 'Prospect' :\n        p.role === 'host' || p.role === 'seller' ? 'Seller' : 'Team'\n}));\n\n// Format transcript segments\nconst segments = (attention.transcript?.segments || []).map((seg, idx) => {\n  const speaker = speakers.find(s => \n    s.name === seg.speaker || \n    s.email === seg.speaker_email\n  );\n  \n  return {\n    speaker_id: speaker?.id ?? 0,\n    speaker_name: seg.speaker || 'Unknown',\n    text: seg.text || '',\n    start_time: formatTime(seg.start_time || 0),\n    ai_filters: {\n      text_cleanup: seg.text || '',\n      sentiment: seg.sentiment || null\n    }\n  };\n});\n\n// Helper function\nfunction formatTime(seconds) {\n  const h = Math.floor(seconds / 3600).toString().padStart(2, '0');\n  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');\n  const s = Math.floor(seconds % 60).toString().padStart(2, '0');\n  return `${h}:${m}:${s}`;\n}\n\n// Return in format matching our schema\nreturn {\n  json: {\n    data: {\n      transcript: {\n        id: attention.id || attention.call_id,\n        title: attention.title || 'Untitled Call',\n        dateString: attention.start_time || attention.created_at,\n        date: attention.start_time || attention.created_at,\n        duration: (attention.duration_seconds || 0) / 60,\n        participants: speakers.map(s => s.email).filter(Boolean),\n        user: speakers.find(s => s.role === 'Seller') || speakers[0],\n        speakers: speakers,\n        summary: {\n          gist: attention.summary?.overview || null,\n          short_summary: attention.summary?.key_points?.join('. ') || null,\n          action_items: attention.action_items || []\n        },\n        sentences: segments,\n        recording_url: attention.recording_url || null,\n        video_url: attention.video_url || null\n      }\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "id": "transform",
+      "name": "Transform Attention Data"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "transcripts_raw",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source",
+              "fieldValue": "attention"
+            },
+            {
+              "fieldId": "source_id",
+              "fieldValue": "={{ $json.data.transcript.id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.data.transcript.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.data.transcript.date }}"
+            },
+            {
+              "fieldId": "duration_seconds",
+              "fieldValue": "={{ Math.floor($json.data.transcript.duration * 60) }}"
+            },
+            {
+              "fieldId": "raw_data",
+              "fieldValue": "={{ $json.data.transcript }}"
+            },
+            {
+              "fieldId": "source_url",
+              "fieldValue": "={{ $json.data.transcript.recording_url }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "YOUR-TEAM-ID-HERE"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "id": "save-raw",
+      "name": "Save to transcripts_raw"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    success: true,\n    transcript_id: $json.id,\n    title: $json.title,\n    source: 'attention',\n    message: 'Attention call fetched and saved successfully',\n    next_step: 'Run Transcript Processor with this ID to continue'\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "id": "output",
+      "name": "Format Output"
+    }
+  ],
+  "connections": {
+    "Call ID Input": {
+      "main": [[{"node": "Fetch from Attention API", "type": "main", "index": 0}]]
+    },
+    "Fetch from Attention API": {
+      "main": [[{"node": "Transform Attention Data", "type": "main", "index": 0}]]
+    },
+    "Transform Attention Data": {
+      "main": [[{"node": "Save to transcripts_raw", "type": "main", "index": 0}]]
+    },
+    "Save to transcripts_raw": {
+      "main": [[{"node": "Format Output", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "tags": []
+}
+
+

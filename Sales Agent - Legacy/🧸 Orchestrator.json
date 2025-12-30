@@ -1,0 +1,2073 @@
+{
+  "name": "🧸 Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Add Thatch Team Members\n\n- Manually, when needed (edit example)\n- From other workflows, automatically",
+        "height": 536,
+        "width": 964,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        672
+      ],
+      "id": "dfc766a8-6c60-4628-9015-680392939024",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Summarize Transcripts\n- Find speakers & accounts and remove unnecesary data",
+        "height": 504,
+        "width": 964,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        1856
+      ],
+      "id": "63f7b1da-6680-4ec5-88d3-a15d77cf9619",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## Store Processed Transcripts & Metadata in Vector Store\n- ",
+        "height": 504,
+        "width": 964,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3312,
+        1856
+      ],
+      "id": "acad3ef1-66d4-4d7c-bc9f-6a0d0c4f4a1e",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract all meetings from the first item\nconst meetings = $json.meetings || [];\n\n// Aggregate all speakers' emails from all meetings\nlet allSpeakerEmails = [];\nfor (const m of meetings) {\n  const speakers = m.meeting?.speakers || [];\n  // Add all emails for this meeting\n  allSpeakerEmails.push(...speakers);\n}\n\n// Remove possible duplicates (optional). If not needed, omit this step.\nallSpeakerEmails = [...new Set(allSpeakerEmails)];\n\n// Split emails into users and contacts\nconst users = allSpeakerEmails\n  .filter(email => email.endsWith('@thatch.ai'))\n  .sort()\n  .map(email => ({ email }));;\n\nconst contacts = allSpeakerEmails\n  .filter(email => !email.endsWith('@thatch.ai'))\n  .sort()\n  .map(email => ({ email }));;\n\n// Output as one n8n item\nreturn {\n      users,\n      contacts,\n  };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        1248
+      ],
+      "id": "6c912dcc-46cf-418c-92c4-33fdb5d8fded",
+      "name": "Prepare participants"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1248,
+        960
+      ],
+      "id": "17afe6d3-d8c0-4082-9218-114b9e26be57",
+      "name": "Daily at 1AM"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2688,
+        960
+      ],
+      "id": "111361ca-7804-460f-b4cf-f923d0c3ec82",
+      "name": "Loop team"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "users",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        960
+      ],
+      "id": "eb7b323c-f184-4e7b-aaa4-2dab0b201f91",
+      "name": "Split team"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0779c7c0-e2cf-45d8-a374-c64659cd7772",
+              "name": "fromDate",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "299dcd3e-5738-4361-8b3c-d07baab46e7b",
+              "name": "toDate",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        960
+      ],
+      "id": "71a1299f-f715-44c3-931f-c741a599e9eb",
+      "name": "Set dates",
+      "notesInFlow": true,
+      "notes": "Leave empty for previous day."
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "team",
+        "returnAll": true,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "is_sales",
+              "condition": "is",
+              "keyValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        960
+      ],
+      "id": "b91bf862-c080-4e6c-af37-b23ff8ae8bac",
+      "name": "Get sales team",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1632,
+        1248
+      ],
+      "id": "ec1c474e-5fe2-46ef-9697-5326df7fce23",
+      "name": "Loop meetings"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2688,
+        1536
+      ],
+      "id": "9b926b58-4c3d-42a0-a561-c4b2cc88dbea",
+      "name": "Loop contacts"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "contacts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        1536
+      ],
+      "id": "b09aaf93-a8c2-481d-8d0e-2022ad4a45dc",
+      "name": "Split contacts"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "meetings",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        1136
+      ],
+      "id": "635bb2cc-9597-49aa-ace6-80329049f5ec",
+      "name": "Aggregate meetings"
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "endpoint": "https://api.fireflies.ai/graphql",
+        "query": "=query Transcripts {\n  transcripts(\n    participant_email: \"{{ $json.email }}\"\n    fromDate: \"{{ $('Set dates').item.json.fromDate || $now.minus(2,'days').toISO().toDateTime().setLocale('en-US').format('yyyy-MM-dd') }}\"\n    toDate: \"{{ $('Set dates').item.json.toDate || $now.minus(1,'days').toISO().toDateTime().setLocale('en-US').format('yyyy-MM-dd') }}\"\n  ) {\n      id\n    }\n  }"
+      },
+      "type": "n8n-nodes-base.graphql",
+      "typeVersion": 1.1,
+      "position": [
+        1248,
+        1152
+      ],
+      "id": "d43bf0b9-51be-4d0c-8741-6767901f473f",
+      "name": "Get meeting ids",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "FROfCaqOfdWtfbmO",
+          "name": "Fireflies GraphQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "GwO5H0q2hYct0hZw",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — 🪲 Fetch Fireflies Transcript"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "meeting_id": "={{ $json.meeting_id }}"
+          },
+          "matchingColumns": [
+            "meeting_id"
+          ],
+          "schema": [
+            {
+              "id": "meeting_id",
+              "displayName": "meeting_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        1344
+      ],
+      "id": "d383dd85-20b1-4d4c-942f-91de734002ff",
+      "name": "Fetch FF meeting",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assumes input is an array of objects, each with data.transcripts: [{id: ...}]\n\nlet allTranscriptIds = [];\n\nfor (const item of $input.all()) {\n  if (item.json.data && Array.isArray(item.json.data.transcripts)) {\n    for (const transcript of item.json.data.transcripts) {\n      if (transcript.id) {\n        allTranscriptIds.push(transcript.id);\n      }\n    }\n  }\n}\n\n// Remove duplicates using Set\nconst uniqueIds = [...new Set(allTranscriptIds)];\n\n// Output as single item with an array of unique ids\nreturn uniqueIds.map(meeting_id => ({ json: { meeting_id } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        1152
+      ],
+      "id": "25916d09-1076-4106-b1a2-46e718a10071",
+      "name": "Deduplicate meetings",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "EoF493NLOQHwy8Aa",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ⚙️ Team Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "is_sales": "={{ $json.is_sales || null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "is_sales",
+              "displayName": "is_sales",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        1056
+      ],
+      "id": "baba2350-7bf1-4722-b18a-1715c891766a",
+      "name": "Add team member",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Add new users",
+            "message": "={{ $json.users.length }} users found. {{ $json.users.filter(item => item.user.operation === 'duplicate').length }} duplicate users, skipped. {{ $json.users.filter(item => item.user.operation === 'invalid').length }} invalid emails, skipped. {{ $json.users.filter(item => item.user.operation === 'success').length }} new users, added.",
+            "title": "={{ $json.users.filter(item => item.user.operation === 'success').length }} new users added.",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        864
+      ],
+      "id": "e8859107-194d-4df0-b3a1-118e1034418c",
+      "name": "Log creating team"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "pAAy05a3QA51pckv",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ☁️ CRM Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "is_sales": "={{ $json.is_sales || null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "is_sales",
+              "displayName": "is_sales",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        1632
+      ],
+      "id": "5f2310b8-fda1-434b-acf7-89977bed2b2d",
+      "name": "Add contact",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "users",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        864
+      ],
+      "id": "8d7ef10d-a848-473e-9c98-8fec61491818",
+      "name": "Aggregate team"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "contacts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        1440
+      ],
+      "id": "1f67dbb5-5ee0-44a9-b9be-4d8812e829c1",
+      "name": "Aggregate contacts"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Add new contacts",
+            "message": "={{ $json.contacts.length }} contacts found. {{ $json.contacts.filter(item => item.contact.operation === 'existing').length }} duplicate contacts, skipped. {{ $json.contacts.filter(item => item.contact.operation === 'invalid' ).length }} invalid contacts, skipped. {{ $json.contacts.filter(item => item.contact.operation === 'success').length }} new contacts added.",
+            "title": "={{ $json.contacts.filter(item => item.contact.operation === 'success').length }} new contacts added.",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        1440
+      ],
+      "id": "8ee3f761-b420-48ee-8bd8-1996d30eb9e1",
+      "name": "Log creating contacts"
+    },
+    {
+      "parameters": {
+        "content": "## Add Contacts & Accounts\n- Manually, when needed (edit example)\n- From other workflows, automatically",
+        "height": 476,
+        "width": 964,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        1296
+      ],
+      "id": "d5daeee2-4547-4980-829d-de0a8f50a31c",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Fetch Fireflies Meetings\n\n- Daily at 1AM\n- Edit Set Dates for start/end date (leave blank for last day).",
+        "height": 1096,
+        "width": 964,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        672
+      ],
+      "id": "6857c771-2333-475e-93cf-63126bd2c28c",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 3,
+              "triggerAtMinute": 25
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1248,
+        2208
+      ],
+      "id": "87f4628a-e778-4b5d-9a9b-a98bf95fa6a7",
+      "name": "Daily at 3AM"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1632,
+        2112
+      ],
+      "id": "9ca4a813-1b1d-461a-a097-79b7ab3bfc0e",
+      "name": "Loop transcripts"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "iTmEBnVk0LWBmBZB",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✂️ Transcript Processor"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "meeting_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "meeting_id"
+          ],
+          "schema": [
+            {
+              "id": "meeting_id",
+              "displayName": "meeting_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        2208
+      ],
+      "id": "c135324a-1f3e-4b27-9a78-af172d7cd6e2",
+      "name": "Process transcript",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "transcripts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1824,
+        2016
+      ],
+      "id": "550b43fd-31be-4bb6-b4db-81463d3b269b",
+      "name": "Aggregate transcripts"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Process transcripts",
+            "message": "={{ $json.transcripts.length }} transcripts received. {{ $json.transcripts.filter(item => item.transcript?.operation === 'duplicate').length}} duplicate transcripts, skipped. {{ $json.transcripts.filter(item => item.transcript?.operation === 'invalid').length }} invalid transcripts, skipped. {{ $json.transcripts.filter(item => item.transcript?.operation !== 'success' && item.transcript?.operation !== 'duplicate' && item.transcript?.operation !== 'invalid').length }} transcripts without id, skipped. {{ $json.transcripts.filter(item => item.transcript?.operation === 'success').length }} transcripts were processed.",
+            "title": "={{ $json.transcripts.filter(item => item.transcript?.operation === 'success').length }} transcripts processed",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2016,
+        1920
+      ],
+      "id": "0344c84b-b13e-467a-a250-de6ca07c8ee1",
+      "name": "Log processed transcripts"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        2304,
+        864
+      ],
+      "id": "8b586de8-012b-4c09-894e-8c35f1910a41",
+      "name": "Manual setup",
+      "notesInFlow": true,
+      "notes": "Edit team emails"
+    },
+    {
+      "parameters": {
+        "content": "## Process Trascripts",
+        "height": 504,
+        "width": 964,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        1856
+      ],
+      "id": "6a1fbb9d-217b-4fee-88c1-d9b8034b1296",
+      "name": "Sticky Note8"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Fetch Fireflies transcripts",
+            "message": "={{ $json.meetings.length }} meetings fetched. {{ $json.meetings.filter(item => item.meeting.operation === 'duplicate').length }} duplicate meetings, skipped. {{ $json.meetings.filter(item => item.meeting.operation !== 'success' && item.meeting.operation !== 'duplicate').length }} invalid meetings, skipped. {{ $json.meetings.filter(item => item.meeting.operation === 'success').length }} new meetings, added.",
+            "title": "={{ $json.meetings.filter(item => item.meeting.operation === 'success').length }} new meetings added.",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2016,
+        1056
+      ],
+      "id": "0d5cf637-05d0-4bd8-b41d-8560baa4be1b",
+      "name": "Log fetching transcripts"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2304,
+        2208
+      ],
+      "id": "210eda9b-a0ba-4671-b3b7-5e24a6789cbc",
+      "name": "Daily at 5AM"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Summarize transcripts",
+            "message": "={{ $json.transcripts.length }} transcripts received. {{ $json.transcripts.filter(item => item.transcript.operation === 'duplicate').length }} duplicate transcripts skipped. {{ $json.transcripts.filter(item => item.transcript.operation === 'invalid').length }} invalid transcripts, skipped. {{ $json.transcripts.filter(item => item.transcript.operation !== 'invalid' && item.transcript.operation !== 'success' && item.transcript.operation !== 'duplicate').length }} error transcripts, skipped. {{ $json.transcripts.filter(item => item.transcript.operation === 'success').length }} transcripts summarized.",
+            "title": "={{ $json.transcripts.filter(item => item.transcript.operation === 'success').length }} transcripts summarized",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3072,
+        1920
+      ],
+      "id": "4bd27e3b-f544-4ec0-954e-04598ca5f4d9",
+      "name": "Log summarized transcripts"
+    },
+    {
+      "parameters": {
+        "content": "## Enrich Contacts",
+        "height": 1096,
+        "width": 964,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3312,
+        672
+      ],
+      "id": "af72768a-90ca-4b49-ba57-f252b3c65425",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Master Agent",
+        "height": 396,
+        "width": 3076
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        2448
+      ],
+      "id": "d8b2c3f4-b10b-41ee-a0a8-349533b95881",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        1440
+      ],
+      "id": "c0730ed3-e014-44cb-8d18-3306c15391c1",
+      "name": "Route new meetings"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3744,
+        864
+      ],
+      "id": "dd9c08c4-03b1-4b87-8198-c4dfea643010",
+      "name": "Enrich unknown Thatch team"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3744,
+        1344
+      ],
+      "id": "2f87b21e-ff66-499a-a624-0d7cb0a393f1",
+      "name": "Merge duplicate account ids"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3744,
+        1536
+      ],
+      "id": "a125944a-840b-4ef0-bd24-a8e637e5b323",
+      "name": "Check daily for lead→account conversions"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "bqBP10ut3ypO9Mjm",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — 🔖 Transcript Summarizers"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "meeting_id"
+          ],
+          "schema": [
+            {
+              "id": "transcript_id",
+              "displayName": "transcript_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        2208
+      ],
+      "id": "dae3c91a-af8a-427d-836e-0f38e0e6b2df",
+      "name": "Summarize & evaluate"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        3360,
+        2208
+      ],
+      "id": "7b361b1d-5447-4b6e-a680-d55d823409d0",
+      "name": "Daily at 7AM"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2688,
+        2112
+      ],
+      "id": "c7f1fdf3-0c37-42f0-947b-b1e6027d2593",
+      "name": "Loop for summarization"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3744,
+        2112
+      ],
+      "id": "e7edb879-d624-44a6-a4df-e0aa2e26d0af",
+      "name": "Loop for vectorization"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "bQk86iR47E3py3KZ",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — 🧮 RAG Pipeline"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.id }}"
+          },
+          "matchingColumns": [
+            "transcript_id"
+          ],
+          "schema": [
+            {
+              "id": "transcript_id",
+              "displayName": "transcript_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3936,
+        2208
+      ],
+      "id": "0b5aea2f-731b-478e-9f25-0ae5427ac585",
+      "name": "Create embeddings"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "nLxdJInLJUHTFMYi",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ✍🏻 Log Handler"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "level": "info",
+            "author": "={{ $workflow.name }}: Vectorize transcripts",
+            "message": "={{ $json.vectorized_transcripts.length }} transcripts received. {{ $json.vectorized_transcripts.reduce((sum, item) => sum + item.vectorized_transcript.operation.items, 0) }} total segments received. {{ $json.vectorized_transcripts.reduce((sum, item) => sum + item.vectorized_transcript.operation.invalid, 0) }} invalid segments, skipped. {{ $json.vectorized_transcripts.reduce((sum, item) => sum + item.vectorized_transcript.operation.error, 0) }} error segments, skipped.",
+            "title": "={{ \n  $json.vectorized_transcripts?.length > 0 \n    ? `${$json.vectorized_transcripts.filter(i => i?.is_vectorized === true).length} transcripts vectorized with ${Math.round((1 - ($json.vectorized_transcripts.reduce((sum, item) => sum + (item?.vectorized_transcript?.operation?.invalid || 0), 0) / Math.max($json.vectorized_transcripts.reduce((sum, item) => sum + (item?.vectorized_transcript?.operation?.items || 0), 0), 1))) * 100)}% success.`\n    : \"No transcripts to process.\"\n}}",
+            "payload": "={{ $json }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "level",
+              "displayName": "level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "author",
+              "displayName": "author",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4128,
+        1920
+      ],
+      "id": "d87a23da-9da9-42ae-a266-7ebd6f7f7c4c",
+      "name": "Log vectorized transcripts"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "vectorized_transcripts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        3936,
+        2016
+      ],
+      "id": "e5ceb2b3-09a0-434c-b5d3-b09b4ce8ad7b",
+      "name": "Aggregate vectorized"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "transcripts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2880,
+        2016
+      ],
+      "id": "7fff5188-8505-4bb0-9a5f-d0070dcfa53f",
+      "name": "Aggregate summarized"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Weighted keywords with importance scores\nconst keywords = {\n  pricing: {\n    high: ['pricing', 'price', 'cost', 'budget', 'expensive', 'discount'],\n    medium: ['fee', 'payment', 'money'],\n    low: ['cheap', 'affordable']\n  },\n  performance: {\n    high: ['performance', 'coaching', 'metrics', 'kpi'],\n    medium: ['training', 'improvement', 'feedback'],\n    low: ['skills']\n  },\n  competitive: {\n    high: ['competitor', 'competitive', 'versus', 'vs', 'peoplekeep', 'salesforce'],\n    medium: ['comparison', 'alternative'],\n    low: ['compare']\n  },\n  objection: {\n    high: ['objection', 'concern', 'hesitant', 'risk'],\n    medium: ['worry', 'problem', 'issue', 'challenge'],\n    low: ['doubt']\n  },\n  speaker: {\n    high: ['performance by', 'rep performance'],\n    medium: ['speaker', 'salesperson'],\n    low: ['person', 'individual']\n  },\n  feature: {\n    high: ['integration', 'api', 'dashboard'],\n    medium: ['feature', 'functionality', 'reporting'],\n    low: ['analytics']\n  },\n  timeline: {\n    high: ['asap', 'urgent', 'deadline'],\n    medium: ['timeline', 'schedule', 'implementation'],\n    low: ['when', 'launch']\n  },\n  use_case: {\n    high: ['use case', 'workflow'],\n    medium: ['scenario', 'process'],\n    low: ['example']\n  }\n};\n\nconst weights = { high: 5, medium: 3, low: 1 };\nconst negations = ['not', 'no', 'without', \"don't\", \"isn't\", \"won't\"];\n\n// Guarded acquisition of input\n\nconst original_query = $json.body[0]?.query || $json.body[0]?.chatInput;\nconst query = original_query.toLowerCase().trim();\nconst sessionId = $json.body[0]?.sessionId || `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\nif (!query || query.length < 3) {\n  return {\n    intent: 'invalid',\n    query: original_query,\n    sessionId,\n    confidence: 0\n  };\n}\n\n// Helper: true word boundary using regex\nfunction isWordBoundary(text, keyword) {\n  // Use regex with word boundary if the keyword does not contain spaces\n  if (!keyword.includes(' ')) {\n    const pattern = new RegExp(`\\\\b${keyword.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\\\b`, 'i');\n    return pattern.test(text);\n  }\n  // For multiword phrases, use includes()\n  return text.includes(keyword);\n}\n\nconst hasNegation = negations.some(neg => query.includes(neg));\n\nlet bestIntent = 'general';\nlet bestScore = 0;\nlet confidence = 0;\n\nconst intentOrder = ['pricing', 'objection', 'performance', 'competitive', 'feature', 'speaker', 'timeline', 'use_case'];\n\nfor (const intent of intentOrder) {\n  let score = 0;\n  let matchCount = 0;\n\n  for (const [tier, keywordList] of Object.entries(keywords[intent])) {\n    for (const keyword of keywordList) {\n      if (isWordBoundary(query, keyword)) {\n        score += weights[tier];\n        matchCount++;\n        if (keyword.includes(' ') && query.includes(keyword)) score += 2;\n      }\n    }\n  }\n\n  if (hasNegation && (intent === 'pricing' || intent === 'objection')) score *= 0.3;\n\n  if (score > bestScore) {\n    bestScore = score;\n    bestIntent = intent;\n    confidence = Math.min(score / 10, 1);\n    if (score >= 15) break;\n  }\n}\n\n// Speaker intent override\nif ($json.body[0].speaker_name && bestScore < 5) {\n  bestIntent = 'speaker';\n  confidence = 0.8;\n}\n\n// Multi-intent logic: avoid redundancy, score filter\nconst secondaryIntents = [];\nif (bestScore >= 8) {\n  for (const intent of intentOrder) {\n    if (intent !== bestIntent) {\n      let secondaryScore = 0;\n      for (const [tier, keywordList] of Object.entries(keywords[intent])) {\n        for (const keyword of keywordList) {\n          if (isWordBoundary(query, keyword)) secondaryScore += weights[tier] * 0.5;\n        }\n      }\n      if (secondaryScore >= 4) {\n        secondaryIntents.push({ intent, score: secondaryScore });\n      }\n    }\n  }\n  // Sort by score descending, remove duplicates, limit to top 2\n  secondaryIntents.sort((a, b) => b.score - a.score);\n  const seen = new Set();\n  const uniqueSecondary = [];\n  for (const s of secondaryIntents) {\n    if (!seen.has(s.intent)) {\n      uniqueSecondary.push(s);\n      seen.add(s.intent);\n    }\n    if (uniqueSecondary.length === 2) break;\n  }\n  secondaryIntents.length = 0;\n  secondaryIntents.push(...uniqueSecondary);\n}\n\nreturn {\n  webhook: 'https://thatch.app.n8n.cloud/webhook/sales-analyzer/agents/' + bestIntent,\n  sessionId: sessionId,\n  query: original_query,\n  timestamp: new Date().toISOString(),\n  intent: bestIntent,\n  confidence: confidence,\n  secondaryIntents: secondaryIntents, // Already limited\n  debugScore: bestScore // For development\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        2592
+      ],
+      "id": "4d65ee50-472c-4bb4-bb4e-9761232bf82d",
+      "name": "Intent classification",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-analyzer",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        2592
+      ],
+      "id": "9103cb5a-e451-4840-bb9b-f6445ff9df12",
+      "name": "Master webhook",
+      "webhookId": "04392dd7-7504-4350-afda-014bf005fcb4"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        2016,
+        2592
+      ],
+      "id": "62a6c4d3-1809-46b7-bb1b-cd8a36ace534",
+      "name": "Respond to master webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        2592
+      ],
+      "id": "215e9e39-102a-4525-be79-10564414a67a",
+      "name": "Process response"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://thatch.app.n8n.cloud/webhook/sales-analyzer/agents/generic",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "sessionId",
+              "value": "={{ $json.sessionId }}"
+            },
+            {
+              "name": "=query",
+              "value": "={{ $json.query }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1632,
+        2592
+      ],
+      "id": "52db0c59-e1ca-4612-ac9e-8833e12ad9bd",
+      "name": "Generic agent"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_fireflies",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "select=id&or=(is_processed.is.null,is_processed.not.eq.true)&or=(is_valid.is.null,is_valid.eq.true)"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        2112
+      ],
+      "id": "e4807739-4690-4ea3-ad4c-a2b7689a41dc",
+      "name": "Get unprocessed transcripts",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "select=id&and=(is_summarized.is.null)"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        2112
+      ],
+      "id": "09f08dc2-b420-43e3-8337-f758902d99dd",
+      "name": "Get unsummarized transcripts",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "select=id&and=(is_valid.eq.false,is_vectorized.eq.true)"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3552,
+        2112
+      ],
+      "id": "3fc96662-d144-4534-b511-cad3d5d96a8a",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Manual setup": [
+      {
+        "json": {
+          "users": [
+            {
+              "email": "seth@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "tom@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "zach@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "monica.h@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "nikos@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "retsy@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "jfirenzi@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "jgeredes@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "denis@thatch.ai",
+              "is_sales": true
+            },
+            {
+              "email": "cc@thatch.ai",
+              "is_sales": true
+            }
+          ]
+        }
+      }
+    ],
+    "Master webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "agents.performikon.net",
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            "content-length": "117",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "en-US,en;q=0.9,ro;q=0.8,et;q=0.7",
+            "content-type": "application/json",
+            "origin": "http://localhost:5179",
+            "referer": "http://localhost:5179/",
+            "sec-ch-ua": "\"Google Chrome\";v=\"137\", \"Chromium\";v=\"137\", \"Not/A)Brand\";v=\"24\"",
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": "\"macOS\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "x-forwarded-for": "90.84.229.210",
+            "x-forwarded-host": "agents.performikon.net",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "2099d41910b7",
+            "x-real-ip": "90.84.229.210"
+          },
+          "params": {},
+          "query": {},
+          "body": [
+            {
+              "sessionId": "76d77ae9-acd1-4807-b821-87df2805624d",
+              "action": "sendMessage",
+              "chatInput": "Which customers think that we are the most expensive?"
+            }
+          ],
+          "webhookUrl": "https://agents.performikon.net/webhook/thatcher",
+          "executionMode": "production"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Prepare participants": {
+      "main": [
+        [
+          {
+            "node": "Split contacts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 1AM": {
+      "main": [
+        [
+          {
+            "node": "Set dates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop team": {
+      "main": [
+        [
+          {
+            "node": "Aggregate team",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add team member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split team": {
+      "main": [
+        [
+          {
+            "node": "Loop team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set dates": {
+      "main": [
+        [
+          {
+            "node": "Get sales team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get sales team": {
+      "main": [
+        [
+          {
+            "node": "Get meeting ids",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop meetings": {
+      "main": [
+        [
+          {
+            "node": "Aggregate meetings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch FF meeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop contacts": {
+      "main": [
+        [
+          {
+            "node": "Aggregate contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split contacts": {
+      "main": [
+        [
+          {
+            "node": "Loop contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate meetings": {
+      "main": [
+        [
+          {
+            "node": "Log fetching transcripts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare participants",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route new meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get meeting ids": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch FF meeting": {
+      "main": [
+        [
+          {
+            "node": "Loop meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate meetings": {
+      "main": [
+        [
+          {
+            "node": "Loop meetings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add team member": {
+      "main": [
+        [
+          {
+            "node": "Loop team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add contact": {
+      "main": [
+        [
+          {
+            "node": "Loop contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate team": {
+      "main": [
+        [
+          {
+            "node": "Log creating team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate contacts": {
+      "main": [
+        [
+          {
+            "node": "Log creating contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 3AM": {
+      "main": [
+        [
+          {
+            "node": "Get unprocessed transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop transcripts": {
+      "main": [
+        [
+          {
+            "node": "Aggregate transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process transcript": {
+      "main": [
+        [
+          {
+            "node": "Loop transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate transcripts": {
+      "main": [
+        [
+          {
+            "node": "Log processed transcripts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get unsummarized transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual setup": {
+      "main": [
+        [
+          {
+            "node": "Split team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 5AM": {
+      "main": [
+        [
+          {
+            "node": "Get unsummarized transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log processed transcripts": {
+      "main": [
+        []
+      ]
+    },
+    "Route new meetings": {
+      "main": [
+        [
+          {
+            "node": "Get unprocessed transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize & evaluate": {
+      "main": [
+        [
+          {
+            "node": "Loop for summarization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily at 7AM": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop for summarization": {
+      "main": [
+        [
+          {
+            "node": "Aggregate summarized",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarize & evaluate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop for vectorization": {
+      "main": [
+        [
+          {
+            "node": "Aggregate vectorized",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create embeddings": {
+      "main": [
+        [
+          {
+            "node": "Loop for vectorization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate vectorized": {
+      "main": [
+        [
+          {
+            "node": "Log vectorized transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate summarized": {
+      "main": [
+        [
+          {
+            "node": "Log summarized transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent classification": {
+      "main": [
+        [
+          {
+            "node": "Generic agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Master webhook": {
+      "main": [
+        [
+          {
+            "node": "Intent classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process response": {
+      "main": [
+        [
+          {
+            "node": "Respond to master webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generic agent": {
+      "main": [
+        [
+          {
+            "node": "Process response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get unprocessed transcripts": {
+      "main": [
+        [
+          {
+            "node": "Loop transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get unsummarized transcripts": {
+      "main": [
+        [
+          {
+            "node": "Loop for summarization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Loop for vectorization",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "58b7724c-1a98-461b-be85-19f4399a23fc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "XwItKhRJTrLCwGuJ",
+  "tags": []
+}

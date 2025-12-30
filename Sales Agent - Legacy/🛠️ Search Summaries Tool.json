@@ -1,0 +1,566 @@
+{
+  "name": "🛠️ Search Summaries Tool",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "query_text"
+            },
+            {
+              "name": "match_threshold",
+              "type": "number"
+            },
+            {
+              "name": "match_count",
+              "type": "number"
+            },
+            {
+              "name": "top_n",
+              "type": "number"
+            },
+            {
+              "name": "from_date"
+            },
+            {
+              "name": "to_date"
+            },
+            {
+              "name": "filters",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        896
+      ],
+      "id": "cd8e059a-9080-485d-8e7e-78bf9c1e6d34",
+      "name": "Input"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"input\": \"{{ $('Input').item.json.query_text }}\",\n  \"model\": \"text-embedding-3-small\",\n  \"encoding_format\": \"float\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        512,
+        896
+      ],
+      "id": "3dbd6340-15b6-4756-b5fd-ebbcd6849f12",
+      "name": "Query embedding",
+      "retryOnFail": true,
+      "notesInFlow": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        }
+      },
+      "notes": "text-embedding-3-small"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://pgcaboifyvvsnainujnz.supabase.co/rest/v1/rpc/search_summaries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        816
+      ],
+      "id": "73612c15-2639-40bc-a907-4e13c3aa1209",
+      "name": "Supabase vector search",
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        },
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "notes": "search_summaries"
+    },
+    {
+      "parameters": {
+        "jsCode": "const query_embedding = $('Query embedding').first().json.data[0].embedding;\nconst input = $('Input').first().json;\nconst defaults = $('Configuration').first().json;\nconst match_threshold = input.match_threshold || defaults.default_match_threshold;\n\nfunction validateString(param) {\n  return param !== null && param !== undefined && param !== '';\n}\n\nfunction validateArray(param) {\n  return Array.isArray(param) && param.length > 0;\n}\n\nlet output = {\n  query_embedding: query_embedding,\n  match_threshold: match_threshold - ($runIndex * 0.05),\n  match_count: input.match_count || defaults.default_match_count || 150\n}\n\nif (validateString(input.from_date)) {\n  output.from_date = input.from_date;\n}\n\nif (validateString(input.to_date)) {\n  output.to_date = input.to_date;\n}\n\n// Filters - Check if filters object exists first\nif (input.filters) {\n  if (validateArray(input.filters.parent_ids)) {\n    output.parent_ids = input.filters.parent_ids;\n  }\n\n  if (validateArray(input.filters.summary_types)) {\n    output.summary_types = input.filters.summary_types;\n  }\n\n  if (validateArray(input.filters.call_types)) {\n    output.call_types = input.filters.call_types;\n  }\n\n  if (validateArray(input.filters.accounts)) {\n    output.accounts = input.filters.accounts;\n  }\n\n  if (validateArray(input.filters.competitors)) {\n    output.competitors = input.filters.competitors;\n  }\n\n  if (validateArray(input.filters.speaker_names)) {\n    output.speaker_names = input.filters.speaker_names;\n  }\n\n  if (validateArray(input.filters.speaker_emails)) {\n    output.speaker_emails = input.filters.speaker_emails;\n  }\n\n  if (validateArray(input.filters.speaker_roles)) {\n    output.speaker_roles = input.filters.speaker_roles;\n  }\n\n  if (validateArray(input.filters.speaker_organizations)) {\n    output.speaker_organizations = input.filters.speaker_organizations;\n  }\n}\n\nreturn output;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        896
+      ],
+      "id": "181c2198-826a-434d-9d61-641f68e2746f",
+      "name": "Prepare query"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cohere.ai/v1/rerank",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "cohereApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "rerank-v3.5"
+            },
+            {
+              "name": "documents",
+              "value": "={{ $json.content }}"
+            },
+            {
+              "name": "top_n",
+              "value": "={{ $('Input').first().json.top_n || $('Configuration').first().json.default_top_n }}"
+            },
+            {
+              "name": "return_documents",
+              "value": "={{true}}"
+            },
+            {
+              "name": "query",
+              "value": "={{ $('Input').first().json.query_text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1856,
+        672
+      ],
+      "id": "7ffc1b1d-a329-484a-a332-b66b81746553",
+      "name": "Rerank results",
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        },
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        },
+        "cohereApi": {
+          "id": "vhQC7V9vTwdHtdO8",
+          "name": "Flowcraft - Cohere - Shared"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const originals = $items(\"Supabase vector search\"); // This is the results from Supabase search\nconst reranked = $json.results; // This is the output of Cohere rerank\n\nconst output = reranked.map(entry => {\n  const idx = entry.index;\n  const doc = originals[idx].json;\n  return {\n    id: doc.id,\n    content: doc.content,\n    metadata: doc.metadata,\n    similarity: doc.similarity,\n    // embedding: doc.embedding, // can add if you want\n    relevance_score: entry.relevance_score\n  };\n});\n\nreturn {\n  \"summaries\": output\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        672
+      ],
+      "id": "1cdd553c-e6d1-4d1b-8954-38a403f06ce0",
+      "name": "Prepare output"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "07290dc9-16e5-45de-b41e-2d2850c55c22",
+              "leftValue": "={{ $json.all() }}",
+              "rightValue": "={{ ($('Input').first().json.top_n || $('Configuration').first().json.default_top_n) / 2 + 3 }}",
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            },
+            {
+              "id": "cee413e6-7126-4da3-a973-c7dbbc7dcf78",
+              "leftValue": "={{ $('Prepare query').item.json.match_threshold }}",
+              "rightValue": 0.1,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1184,
+        816
+      ],
+      "id": "d4c6acd9-7efc-46f9-ac19-e5b38cf51713",
+      "name": "Any results?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a075fc49-c8a8-4d30-b2cf-786f60c889b0",
+              "name": "default_match_threshold",
+              "value": 0.5,
+              "type": "number"
+            },
+            {
+              "id": "1c1333bd-684f-4bd1-bb78-747ba6b19b99",
+              "name": "default_match_count",
+              "value": 100,
+              "type": "number"
+            },
+            {
+              "id": "c56cf4e0-9105-4da8-bb38-d80402f12f00",
+              "name": "default_top_n",
+              "value": 20,
+              "type": "number"
+            },
+            {
+              "id": "9049d04e-d68a-429a-bd15-ffda2e4e962f",
+              "name": "min_match_count",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "1aca1409-7393-4ba2-ad9f-49d4b69e959d",
+              "name": "retries",
+              "value": 5,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        288,
+        896
+      ],
+      "id": "be9d122e-4a66-490b-b79f-478c3827b7d0",
+      "name": "Configuration"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "51b5e657-6d06-46cb-8002-30579a8629db",
+              "name": "lower_match",
+              "value": "={{ $('Prepare query').item.json.match_threshold - 0.05 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1408,
+        992
+      ],
+      "id": "7b2dcdef-8dd7-4dbd-9a5e-30f92a009d8b",
+      "name": "Update params"
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "content"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        768
+      ],
+      "id": "b7b29180-1fd3-4881-a4a4-86ec7714cc46",
+      "name": "Aggregate",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "325b9e0c-a5b1-479e-aba6-44b8219541c2",
+              "leftValue": "={{ $json.content }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1632,
+        768
+      ],
+      "id": "59c76cba-3097-45ad-8f99-d62e9fcc36a9",
+      "name": "At least 1 result?"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  \"summaries\": []\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        864
+      ],
+      "id": "9c20f881-2bee-427c-8c41-7301907d00c7",
+      "name": "No results"
+    }
+  ],
+  "pinData": {
+    "Input": [
+      {
+        "json": {
+          "query_text": "competitor pricing discounts",
+          "match_threshold": null,
+          "match_count": null,
+          "top_n": null,
+          "from_date": null,
+          "to_date": null,
+          "filters": {
+            "parent_ids": null,
+            "summary_types": [
+              "pricing"
+            ],
+            "call_types": [
+              "Prospect closing",
+              "Prospect objections"
+            ],
+            "accounts": "",
+            "competitors": null,
+            "speaker_names": null,
+            "speaker_roles": null,
+            "speaker_emails": null,
+            "speaker_organizations": null
+          }
+        }
+      }
+    ],
+    "Aggregate": [
+      {
+        "json": {
+          "content": [
+            "[Pricing summary] **Prospect is highly focused on controlling employee and employer costs, with iterative modeling of contribution scenarios.** Deborah and the Marsh team explored employer contribution rates between 81% and 90% for employees, and 0–15% for dependents. Several scenarios were modeled live, showing how changes impact individual out-of-pocket costs and company spend (e.g., 80% triggers substantial increases for some employees). Benchmarking data ($600 avg. employer contribution/month industry-wide; Lumata was at $450) and internal cost comparisons shaped the client’s evaluation. The prospect signaled sensitivity to both employee cost increases and the company’s lack of an explicit benefits budget, requiring flexibility from Thatch. No discounts or explicit price concessions discussed. The team requested multiple versions of cost scenarios for executive review, driving the deal towards a collaborative, transparent budgeting process.",
+            "[Pricing summary] **Thatch’s pricing is notably higher than at least one competitor and is a focal point for the prospect.** Thatch quoted $68 per enrolled employee per month ($104,000/year), which includes software, compliance, and advisor fees, with $8 earmarked specifically for compliance. The prospect noted this was nearly twice the price of another vendor. The ongoing $20/employee/month Gallagher broker fee adds to total costs, increasing price sensitivity. Tom indicated flexibility in pricing, offering potential discounts or creative adjustments if cost became a final sticking point. The prospect requested a breakdown of what’s included, especially regarding advocacy, signaling a need for justification of the premium and direct comparison to competitor offerings. Payment terms were explained clearly, with all debits described, but clear budget constraints remain. Final pricing will significantly influence the decision, and close comparison of included services (especially advocacy) is expected.",
+            "[Pricing summary] **Pricing sensitivity was central, with extensive discussion around employer contributions and costs.** Prospect's budget ceiling was $16,000/month, with a preference to stay at or below current spend ($13,037/month). Thatch proposed multiple allowance options: 75th percentile Silver plan with 80%, 85%, 90%, and 100% contribution scenarios. 100% mapped to $15,678 plus platform fees, exceeding current spend. Platform fee was clarified as $45/enrolled employee/month plus $50 base. Final config agreed: 85% employer contribution for employees, 80% for dependents, at a cost slightly under their present $13k/month spend. No discounts or payment terms were discussed. Prospect confirmed pricing was lower than existing solution and weighed plan generosity against budget constraints before deciding.",
+            "[Pricing summary] **Thatch provided flexible contribution and plan cost scenarios**. Tom walked Marley through various benchmarks (50th, 55th, 60th, 65th, 70th, and 75th percentile) for individual market plans, illustrating cost differences for employer contributions (commonly 80%). Focus was on matching or improving employee experience compared to current $60/month high-deductible plans, ensuring affordability compliance. Dependent coverage options were reviewed, and Marley requested quotes for scenarios that include dependent contributions (e.g., 25%). Tom clarified the incremental employer costs for each benchmark. Pricing sensitivity was evident—Marley aimed for significant plan upgrades for frontline workers without large out-of-pocket increases. No discounts, payment terms, or competitor pricing was discussed.",
+            "[Pricing summary] **Pricing concerns center on union contract constraints and cost comparability.** Thatch presented a benchmark-based approach, with aggregate Thatch premiums at $1.6M versus the current $1.3M, showing increased employer and employee contributions (with scenarios adjusted by metal tier—gold vs. silver). Lorraine focused intensely on whether employee costs can exceed contractually fixed contributions ($271.17 for singles, $489 for families). Thatch clarified pricing variability based on age/location and that employees can use leftover funds for qualified expenses if they select lower-cost plans. Increase of $300K in premium was flagged. No discounts or competitor pricing specifics were cited. Paul noted market volatility could impact September renewals. There is moderate to high pricing sensitivity; achieving strict union thresholds is a clear decision requirement.",
+            "[Pricing summary] **Steep group plan increases and individual plan alternatives drive pricing discussions.** The broker highlighted drastic renewal rate hikes: CareFirst (27–46%), Kaiser (~20%), United (17–30%), making current options unattractive. Thatch’s ICHRA solution was positioned as typically more affordable due to individual plan rates, with potential for better coverage at lower cost. No specific dollar figures were shared except for broad employer budget mentions (e.g., “$400/month” for illustrative purposes). The prospect’s company currently pays 100% of premiums and may be sensitive to losing this. Both Thatch and the broker emphasized real savings versus group plans. Thatch provided a link to model costs and plans using age/zipcode for exact pricing, suggesting action is needed soon since the renewal is imminent. Pricing sensitivity is strong, driven by sudden, significant group rate increases, and directly informs decision urgency.",
+            "[Pricing summary] **Pricing discussion centered on affordability, cost containment, and per-employee fees.** Thatch's fee is $68 per enrolled employee per month, split as $30 to the broker, $30 to Thatch, and $8 for compliance. The Concho County Hospital is facing 20–30% renewal increases from Blue Cross, and Thatch's proposal could keep total costs at current levels or yield $15–25K annual savings, depending on contribution levels. Concho’s preference is for 100% employer-funded employee coverage; flexibility in contributions (age-banded, plan-based) was discussed and demonstrated. No competitive alternate pricing was referenced. Pricing sensitivity is high: the client cannot continue paying 100% of premiums and is seeking alternatives under financial duress. Specific plan types (Gold 35, HSA, PPO/HMO) were compared to align value versus cost.",
+            "[Pricing summary] **Pricing concerns centered on perceived higher premiums via ICHRA and employer sensitivity to value.** Len highlighted that Thatch’s proposed ICHRA resulted in higher monthly premiums (e.g., $1,346/month for Nanine) versus current group plans and the only financial advantage seemed to be pre-tax payments for employees. Employer pays an additional $75/admin fee per employee monthly, partly offset by Social Security tax but not entirely. Sense of frustration surfaced over increased deductibles (from $0 to $1,500) and mid-year resets negating tax benefits. The prospect questioned the net value, expressing high pricing sensitivity and seeking value parity or savings ahead of a potential January groupwide change. No discounts or specific competitor pricing details were offered.",
+            "[Pricing summary] **Thatch's pricing model is transparent—$75 per enrolled employee per month, billed only for used stipends.** Leslie sought clarification on whether pre-tax deductions could be made from employees' salaries instead of an employer-funded stipend, but Isra explained Thatch’s approach requires a company-funded stipend, not payroll deductions. Stipends are only billed if reimbursements are processed; unused funds are not charged. The employer inquired about possible tax advantages and reducing taxable income, but learned those only apply in the employer-funded model, not via payroll deduction alone. No discounts, competitor pricing, or budget constraints were discussed, though there was sensitivity to the distinction between employer and employee funding. The price was not overtly disputed, but the per-employee fee, combined with being a very small group, likely influenced hesitancy.",
+            "[Pricing summary] **Severe cost increases in current group health plan drive exploration of alternatives.** Sharon detailed a 45% hike in their level-funded plan, later negotiated to 30%, but still considered unsustainable. The employer covers 70% of premiums, yet employee contributions are now unaffordable for some. Fully insured alternatives were even more costly. Thatch’s ICHRA solution’s per-person admin fee was discussed, but no exact figure provided. Cost transition from current group/COBRA to Thatch was requested. The urgency and high sensitivity to pricing were evident, with Sharon seeking substantial savings and contemplating aggressive switches if justified.",
+            "[Pricing summary] **New York ICHRA pricing is prohibitively high for small employers.** Thatch provided detailed calculations showing minimum contribution requirements: about $950 average per employee monthly allowance, calculated for ACA affordability using each employee's lowest salary. Employer contribution must ensure employees pay no more than 9.02% of income for the lowest-cost Silver plan. For a census of 48 employees, New York’s high exchange plan rates make employer contributions unaffordable—Veronica cited $700+ per employee as “insane.” Nikos explained below-50-employee rules allow smaller fixed allowances (e.g., $400–$500 per employee), but these would not meet ACA affordability if the employee count increases. Thatch fees are $68 per enrolled employee/month, with all costs itemized in the shared spreadsheet. Conversation never covered discounts, competitor pricing, or flexible payment terms. Pricing is a core barrier, with clear prospect sensitivity and discouragement."
+          ]
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Input": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query embedding": {
+      "main": [
+        [
+          {
+            "node": "Prepare query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase vector search": {
+      "main": [
+        [
+          {
+            "node": "Any results?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare query": {
+      "main": [
+        [
+          {
+            "node": "Supabase vector search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rerank results": {
+      "main": [
+        [
+          {
+            "node": "Prepare output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any results?": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Query embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update params": {
+      "main": [
+        [
+          {
+            "node": "Prepare query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "At least 1 result?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "At least 1 result?": {
+      "main": [
+        [
+          {
+            "node": "Rerank results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 120,
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "9d7aa149-9279-4d0f-b59b-ddb5dd074f6b",
+  "meta": {
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "oer4noBr3aRlJ7YE",
+  "tags": [
+    {
+      "updatedAt": "2025-07-30T11:42:53.581Z",
+      "createdAt": "2025-07-30T11:42:53.581Z",
+      "id": "6Fl7tjtO8COzziMn",
+      "name": "Agent Tools"
+    }
+  ]
+}

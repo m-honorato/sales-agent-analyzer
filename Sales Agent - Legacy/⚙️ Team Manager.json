@@ -1,0 +1,480 @@
+{
+  "name": "⚙️ Team Manager",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5c6790b1-c168-4d0d-9e46-a065c41acefe",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "thatch.ai",
+              "operator": {
+                "type": "string",
+                "operation": "endsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        864,
+        1568
+      ],
+      "id": "2fdc8c30-046e-4baa-900b-269eb64ebbe0",
+      "name": "Thatch user?"
+    },
+    {
+      "parameters": {
+        "resource": "user",
+        "operation": "getAll",
+        "limit": 1,
+        "options": {
+          "conditionsUi": {
+            "conditionValues": [
+              {
+                "field": "Email",
+                "value": "={{ $('Thatch user?').item.json.email }}"
+              }
+            ]
+          },
+          "fields": "Id,FirstName,LastName,Title,Email,IsActive"
+        }
+      },
+      "type": "n8n-nodes-base.salesforce",
+      "typeVersion": 1,
+      "position": [
+        1984,
+        1280
+      ],
+      "id": "df04ebe3-57e7-49df-b596-e4d3a81f8f96",
+      "name": "Get Salesforce user",
+      "alwaysOutputData": true,
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "jmAirEih2mDtShjG",
+          "name": "Salesforce account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "endpoint": "https://api.fireflies.ai/graphql",
+        "query": "query Users {\n  users {\n    user_id\n    email\n  }\n}"
+      },
+      "type": "n8n-nodes-base.graphql",
+      "typeVersion": 1.1,
+      "position": [
+        1712,
+        1280
+      ],
+      "id": "958c77da-b7d5-4d9e-9838-e60263eda605",
+      "name": "Get Fireflies users",
+      "alwaysOutputData": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "FROfCaqOfdWtfbmO",
+          "name": "Fireflies GraphQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sfUser = $('Get Salesforce user').first().json;\nconst ffUsers = $('Get Fireflies users').first().json.data.users;\nconst newUser = $('Thatch user?').first().json;\n\nconst ffMatch = ffUsers.find(u => u.email.toLowerCase() === newUser.email.toLowerCase());\n\nreturn [{\n  json: {\n    first_name: sfUser.FirstName || '',\n    last_name: sfUser.LastName || '',\n    title: sfUser.Title || '',\n    email: newUser.email.toLowerCase(),\n    organization: 'Thatch',\n    is_sales: newUser.is_sales || false,\n    is_active: sfUser.IsActive || false,\n    salesforce_id: sfUser.Id || null,\n    fireflies_id: ffMatch ? ffMatch.user_id : null\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2272,
+        1280
+      ],
+      "id": "d50291b7-2cd4-448b-9dbf-17d75dd057df",
+      "name": "Create user"
+    },
+    {
+      "parameters": {
+        "tableId": "team",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "first_name",
+              "fieldValue": "={{ $json.first_name }}"
+            },
+            {
+              "fieldId": "last_name",
+              "fieldValue": "={{ $json.last_name }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email }}"
+            },
+            {
+              "fieldId": "organization",
+              "fieldValue": "={{ $json.organization }}"
+            },
+            {
+              "fieldId": "salesforce_id",
+              "fieldValue": "={{ $json.salesforce_id }}"
+            },
+            {
+              "fieldId": "fireflies_id",
+              "fieldValue": "={{ $json.fireflies_id }}"
+            },
+            {
+              "fieldId": "is_active",
+              "fieldValue": "={{ $json.is_active }}"
+            },
+            {
+              "fieldId": "is_sales",
+              "fieldValue": "={{ $json.is_sales }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2544,
+        1280
+      ],
+      "id": "085c47c4-ebf5-4e3c-8b18-4c37d6142045",
+      "name": "Save user",
+      "alwaysOutputData": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const user = $input.item.json;\n\nreturn {\n  user: {\n    ...user,\n    operation: 'success'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        1008
+      ],
+      "id": "7a8db457-3eb4-4d46-b7db-2dd790f047f4",
+      "name": "Success response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const user = $input.item.json;\n\nreturn {\n  user: {\n    ...user,\n    operation: 'duplicate'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        1280
+      ],
+      "id": "623e7208-a3db-4769-8375-fd100e14f91a",
+      "name": "Duplicate response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  user: {\n    email: $('New user').item.json.email,\n    is_sales: $('New user').item.json.is_sales,\n    operation: 'invalid'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        1840
+      ],
+      "id": "469be35e-d1cd-481d-b3d0-76b331442717",
+      "name": "Invalid response"
+    },
+    {
+      "parameters": {
+        "content": "## Add New Team Members\n\n- Input: `email` and `is_sales`",
+        "height": 1020,
+        "width": 2420
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        544,
+        960
+      ],
+      "id": "6786c5b2-fecc-493d-b023-37dbdd9d73a7",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "email"
+            },
+            {
+              "name": "is_sales",
+              "type": "boolean"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        592,
+        1568
+      ],
+      "id": "2b3da4ca-d4e2-41d4-a96b-61dabc12fc3d",
+      "name": "User details"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "team",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "keyValue": "={{ $json.email }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        1424
+      ],
+      "id": "c8808b9d-9553-4642-9d49-3b7b2395a669",
+      "name": "Get user",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9f1bb1de-2107-42bd-a3ed-f4b2fd5ead9b",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1424,
+        1408
+      ],
+      "id": "0f41620d-4ecc-43f2-96b2-00143c61fba8",
+      "name": "Existing user?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const user = $json;\n\nreturn {\n  user: {\n    ...user,\n    operation: 'duplicate'\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2832,
+        1568
+      ],
+      "id": "e0597d1b-4e84-40b5-9dd5-85adc459c56a",
+      "name": "Duplicate user"
+    }
+  ],
+  "pinData": {
+    "User details": [
+      {
+        "json": {
+          "email": "zach@thatch.ai",
+          "is_sales": null
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Thatch user?": {
+      "main": [
+        [
+          {
+            "node": "Get user",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Salesforce user": {
+      "main": [
+        [
+          {
+            "node": "Create user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Fireflies users": {
+      "main": [
+        [
+          {
+            "node": "Get Salesforce user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create user": {
+      "main": [
+        [
+          {
+            "node": "Save user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save user": {
+      "main": [
+        [
+          {
+            "node": "Success response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success response": {
+      "main": [
+        []
+      ]
+    },
+    "Duplicate response": {
+      "main": [
+        []
+      ]
+    },
+    "Invalid response": {
+      "main": [
+        []
+      ]
+    },
+    "User details": {
+      "main": [
+        [
+          {
+            "node": "Thatch user?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get user": {
+      "main": [
+        [
+          {
+            "node": "Existing user?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existing user?": {
+      "main": [
+        [
+          {
+            "node": "Get Fireflies users",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "cb4f5138-6f57-49a8-a048-c2a66af28a20",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "EoF493NLOQHwy8Aa",
+  "tags": [
+    {
+      "updatedAt": "2025-07-09T19:06:54.499Z",
+      "createdAt": "2025-07-09T19:06:54.499Z",
+      "id": "OE9Im6tifONthJ1A",
+      "name": "Configuration"
+    }
+  ]
+}

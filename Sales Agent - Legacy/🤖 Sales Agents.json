@@ -1,0 +1,618 @@
+{
+  "name": "🤖 Sales Agents",
+  "nodes": [
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"reply\": {\n      \"type\": \"string\",\n      \"description\": \"Your comprehensive analysis responding to the user's query. Maximum 300 words. Use Markdown formatting: **bold** for names (people, companies, competitors), *italic* for emphasis, bullet points for lists, numbered lists for sequences. Always format dates as 'MMM dd, yyyy'. Include specific examples from actual calls with quantitative insights when possible. No Markdown headings or complex syntax.\"\n    },\n    \"followup\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"description\": \"2-3 actionable follow-up questions that dig deeper into the insights provided. Maximum 15 words each. Frame as questions the user would naturally ask next. Focus on specific aspects like accounts, competitors, time periods, or metrics. Examples: 'Which accounts mentioned these objections most frequently?', 'How did the win rate change after addressing this?'\"\n    },\n    \"extra\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"description\": \"Operational metadata for system improvement, including: data confidence levels, tool usage effectiveness, any limitations encountered, and insights for better future query handling. Used for continuous agent optimization.\"\n    }\n  },\n  \"required\": [\"reply\", \"followup\", \"extra\"],\n  \"additionalProperties\": false\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        576
+      ],
+      "id": "c63ffa18-0123-46c6-82fb-2f342278c4dd",
+      "name": "JSON reply"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-analyzer/agents/generic",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        96,
+        560
+      ],
+      "id": "0f82072f-e02b-4766-9c24-5023f6331df5",
+      "name": "Generic query",
+      "webhookId": "04392dd7-7504-4350-afda-014bf005fcb4"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1520,
+        368
+      ],
+      "id": "36ad157c-e645-43b9-964e-c85dab8f3e11",
+      "name": "Respond to query"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.query }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=# Thatch Sales Intelligence Agent - Generic Query Handler\n\n## Role & Context\nYou are the **Generic Query Handler** in Thatch's multi-agent sales intelligence system. You handle queries that don't fit specific intent categories (pricing, performance, competitive, etc.) and provide comprehensive sales insights using transcript data.\n\n## Core Capabilities\nAnalyze sales call transcripts to provide insights on:\n- **Deal Intelligence**: Objections, competitor mentions, pain points, buying signals\n- **Sales Effectiveness**: Messaging performance, question quality, process adherence\n- **Market Intelligence**: Feature requests, value proposition resonance, market feedback\n- **Relationship Mapping**: Key stakeholders, decision-maker identification, relationship strength\n\n## Tool Usage Strategy\n\n### 1. Start Broad, Then Narrow\n- Begin with `search_summaries` for high-level patterns and themes\n- Use `search_segments` for specific dialogue details and quotes\n- Use `search_transcripts` for structured data queries and filtering\n\n### 2. Smart Tool Selection\n- **search_summaries**: Best for trend analysis, outcome patterns, thematic insights\n- **search_segments**: Best for specific conversations, objection handling, competitor discussions\n- **search_transcripts**: Best for participant analysis, call metrics, structured data queries\n\n### 3. Filtering Guidelines\n- Always apply relevant metadata filters to narrow results\n- If no results, remove filters and include filter terms in query_text\n- NEVER use `\"filters\": {}` (blank filters)!!!\n- Use date ranges when temporal analysis is relevant (today is {{ $now.format('yyyy-MM-dd') }})\n\n## Critical Instructions\n\n### Efficiency Rules\n- Maximum 3 tool calls per query\n- Start with most relevant tool based on query type\n- Use targeted filters from the start\n- Avoid redundant tool calls\n\n\n### Data Accuracy\n- Only use data from tool results - never invent or assume information\n- Reference specific companies, dates, participants when available\n- Provide quantitative insights with actual numbers from calls\n- Include confidence indicators when data is limited\n\n### Response Quality\n- Lead with key insights, support with specific examples\n- Use **bold** for all names (companies, people, competitors)\n- Format dates as 'MMM dd, yyyy' (e.g., Jan 15, 2025)\n- Provide actionable recommendations based on patterns\n\n### Output Requirements\nStructure your response as JSON with:\n1. **reply**: Comprehensive answer with insights and examples\n2. **followup**: 2-3 relevant questions to continue the conversation\n3. **extra**: Operational insights for future performance improvement\n\n## Quality Standards\n- Maximum 400 words for reply\n- Use Markdown formatting (bold, italic, bullets, numbers) - NO headings\n- Cite specific examples from actual calls\n- Suggest concrete next steps or recommendations"
+        }
+      },
+      "id": "07028846-fd61-4039-871a-48d83e08a375",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [
+        544,
+        352
+      ],
+      "typeVersion": 1.7,
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Generic query').item.json.body.sessionId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        448,
+        576
+      ],
+      "id": "20e44b33-cb3c-45f3-9571-8371249f1282",
+      "name": "Memory"
+    },
+    {
+      "parameters": {
+        "description": "Search call summaries using vector similarity to identify broad patterns, themes, and outcomes across sales conversations. Use metadata filters to narrow results by account, competitor, time period, or participant. Best for understanding trends, common objections, and high-level insights across multiple calls.",
+        "workflowId": {
+          "__rl": true,
+          "value": "oer4noBr3aRlJ7YE",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — 🛠️ Search Summaries Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query_text": "={{ $fromAI('summaries_query_text', `Describe what insights you're looking for (e.g., 'pricing objections', 'competitor comparisons', 'feature requests')`, 'string') }}",
+            "match_threshold": "={{ $fromAI('summaries_match_threshold', `Similarity threshold (0.1-0.5). Lower = broader results, higher = more specific matches`, 'number', 0.3) }}",
+            "match_count": "={{ $fromAI('summaries_match_count', `Initial search results before reranking (50-200 recommended)`, 'number', 100) }}",
+            "top_n": "={{ $fromAI('summaries_top_n', `Final number of summaries to analyze (10-30 optimal for detailed analysis)`, 'number', 30) }}",
+            "from_date": "={{ $fromAI('summaries_from_date', `Start date for filtering summaries.`, 'string', null) }}",
+            "to_date": "={{ $fromAI('summaries_to_date', `Until date for filtering summaries. For reference, today's date is $now.format('yyyy-MM-dd').`, 'string', null) }}",
+            "filters": "={{ $fromAI('summaries_filters', `Target specific criteria. Use exact names from your data. Example:\n{\n  \"summary_types\": [\"pricing\"], // Types of summaries: pricing | objections | competitors | \n  \"call_types\": [\"Prospect discovery\", \"Prospect objections\"], // Types of calls: Prospect discovery | Prospect demo | Prospect closing | Prospect objections | Prospect negotiations | Client onboarding | Client renewal | Partner strategy\n  \"accounts\": [\"Vermax\", \"Natania\"], // Name of prospect accounts\n  \"competitors\": [\"Rippling\"], // Names of competitors\n  \"speaker_names\": [\"Matt Damon\", \"Zach\"], // Names of speakers/participants\n  \"speaker_roles\": [\"Seller\", \"Team\"], // Thatch roles can be Seller | Team. Prospect roles can be Prospect | Employer | Partner | Broker.\n  \"speaker_organizations\": [\"Thatch\"], // Name of organization/s of participants\n  \"speaker_emails\": [\"zach@thatch.ai\"] // Email/s of speakers\n  `, 'json') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query_text",
+              "displayName": "query_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "match_threshold",
+              "displayName": "match_threshold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "match_count",
+              "displayName": "match_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "top_n",
+              "displayName": "top_n",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "from_date",
+              "displayName": "from_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to_date",
+              "displayName": "to_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "filters",
+              "displayName": "filters",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        576
+      ],
+      "id": "b7580e9c-e789-42b6-8535-5ecefc1c799a",
+      "name": "search_summaries",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "description": "Search specific dialogue segments from sales calls to find exact conversations, quotes, and detailed interactions. Use when you need specific examples of objection handling, competitor discussions, feature requests, or pricing conversations. Provides actual transcript excerpts with speaker attribution.",
+        "workflowId": {
+          "__rl": true,
+          "value": "5D0qPRuVMaA4ltiJ",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — 🛠️ Search Segments Tool"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query_text": "={{ $fromAI('query_text', `Specific dialogue or conversation topic you want to find`, 'string') }}",
+            "match_threshold": "={{ $fromAI('summaries_match_threshold', `Similarity threshold (0.1-0.5). Lower = broader results, higher = more specific matches`, 'number', 0.3) }}",
+            "match_count": "={{ $fromAI('match_count', `Initial search results before reranking (100-200 recommended`, 'number', 150) }}",
+            "top_n": "={{ $fromAI('top_n', `Final number of segments to analyze (10-30 optimal for detailed analysis)`, 'number') }}",
+            "from_date": "={{ $fromAI('from_date', ``, 'string') }}",
+            "to_date": "={{ $fromAI('to_date', ``, 'string') }}",
+            "filters": "={{ $fromAI('filters', `Filter transcript segments by various criteria. Example:\n{\n  \"call_types\": [\"Prospect discovery\", \"Prospect objections\"], // Types of calls: Prospect discovery | Prospect demo | Prospect closing | Prospect objections | Prospect negotiations | Client onboarding | Client renewal | Partner strategy\n  \"accounts\": [\"Vermax\", \"Natania\"], // Name of prospect accounts\n  \"competitors\": [\"Rippling\"], // Names of competitors\n  \"speaker_names\": [\"Matt Damon\", \"Zach\"], // Names of speakers/participants\n  \"speaker_roles\": [\"Seller\", \"Team\"], // Thatch roles can be Seller | Team. Prospect roles can be Prospect | Employer | Partner | Broker.\n  \"speaker_organizations\": [\"Thatch\"], // Name of organization/s of participants\n  \"speaker_emails\": [\"zach@thatch.ai\"], // Email/s of speakers\n  \"current_speaker_names\": [\"Matt Damon\", \"Zach\"], // Names of speakers/participants\n  \"current_speaker_roles\": [\"Seller\", \"Team\"], // Thatch roles can be Seller | Team. Prospect roles can be Prospect | Employer | Partner | Broker.\n  \"current_speaker_organizations\": [\"Thatch\"] // Name of organization/s of participants\n}`, 'json', null) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query_text",
+              "displayName": "query_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "match_threshold",
+              "displayName": "match_threshold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "match_count",
+              "displayName": "match_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "top_n",
+              "displayName": "top_n",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number"
+            },
+            {
+              "id": "from_date",
+              "displayName": "from_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "to_date",
+              "displayName": "to_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "filters",
+              "displayName": "filters",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        576
+      ],
+      "id": "7008c65c-f644-4676-aa1f-41c940e79617",
+      "name": "search_segments",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Query structured transcript metadata including participants, call duration, sentiment scores, and outcome metrics. Use Supabase query syntax to filter and retrieve specific data points. Best for analyzing call performance, participant analysis, and getting structured data about calls rather than content.",
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "limit": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Limit', `Number of items to return`, 'number') }}",
+        "filterType": "string",
+        "filterString": "={{ $fromAI('filtersString_', `Use Supabase API query syntax with operators, eg. 'select=id,title,date,speakers,accounts,sentiment,analytics,duration,type,custom_metrics,competitors,partners&is_valid=eq.true&is_vectorized=eq.true' ... etc.`, 'string',) }}"
+      },
+      "type": "n8n-nodes-base.supabaseTool",
+      "typeVersion": 1,
+      "position": [
+        832,
+        576
+      ],
+      "id": "7206800a-5a29-4f39-b2c7-d72d89b7a37f",
+      "name": "search_transcripts",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        784
+      ],
+      "id": "16416264-4de3-4626-ade0-abe2717864f8",
+      "name": "claude-sonnet-4",
+      "credentials": {
+        "anthropicApi": {
+          "id": "muRV3JAE1ZyPnFOA",
+          "name": "Anthropic account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "382e88f2-7adf-4a90-b625-a332dd718bc2",
+              "name": "output",
+              "value": "={\n  \"reply\": \"**An error has occurred**: {{$json.error}}. Please retry\",\n  \"followup\": [\"{{ $('Generic query').item.json.body.query }}\"],\n  \"extra\": []\n}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1008,
+        400
+      ],
+      "id": "97d4288f-990d-4c44-9522-72950f27c281",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "tableId": "sales_agent_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "session_id",
+              "fieldValue": "={{ $('Generic query').item.json.body.sessionId }}"
+            },
+            {
+              "fieldId": "question",
+              "fieldValue": "={{ $('Generic query').item.json.body.query }}"
+            },
+            {
+              "fieldId": "reply",
+              "fieldValue": "={{ $json.output.reply }}"
+            },
+            {
+              "fieldId": "followup",
+              "fieldValue": "={{ $json.output.followup }}"
+            },
+            {
+              "fieldId": "extra",
+              "fieldValue": "={{ $json.output.extra }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        304
+      ],
+      "id": "840991ee-f90c-4ef5-8721-669b0be61f86",
+      "name": "Log response",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        576
+      ],
+      "id": "c747134c-da0c-46fd-a260-b68b40d907ce",
+      "name": "claude-s-4",
+      "credentials": {
+        "anthropicApi": {
+          "id": "muRV3JAE1ZyPnFOA",
+          "name": "Anthropic account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Generic query": [
+      {
+        "json": {
+          "headers": {
+            "host": "thatch.app.n8n.cloud",
+            "user-agent": "axios/1.8.3",
+            "content-length": "116",
+            "accept": "application/json,text/html,application/xhtml+xml,application/xml,text/*;q=0.9, image/*;q=0.8, */*;q=0.7",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "4.184.78.255",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "DE",
+            "cf-ray": "962e1b5691d90ac2-FRA",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-forwarded-for": "4.184.78.255, 172.70.248.119",
+            "x-forwarded-host": "thatch.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-87-bcb9f59f7-6frbl",
+            "x-is-trusted": "yes",
+            "x-real-ip": "4.184.78.255"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "sessionId": "76d77ae9-acd1-4807-b821-87df2805624d",
+            "query": "What are the most frequently requested pricing clarifications?"
+          },
+          "webhookUrl": "https://thatch.app.n8n.cloud/webhook-test/sales-analyzer/agents/generic",
+          "executionMode": "test"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "JSON reply": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generic query": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_summaries": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_segments": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_transcripts": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Log response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "claude-sonnet-4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "JSON reply",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Log response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log response": {
+      "main": [
+        [
+          {
+            "node": "Respond to query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "claude-s-4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8adde5ce-8c79-4b31-90c2-60f113720d11",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "8DD5OGfyrGAjLRsO",
+  "tags": [
+    {
+      "updatedAt": "2025-07-08T13:46:39.388Z",
+      "createdAt": "2025-07-08T13:46:39.388Z",
+      "id": "haKUFJbwO5JQl5ud",
+      "name": "Agents"
+    }
+  ]
+}

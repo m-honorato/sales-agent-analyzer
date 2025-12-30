@@ -1,0 +1,126 @@
+{
+  "name": "⚡ Quick Test - Process Transcript",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "manual-trigger",
+      "name": "Start Here"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Test transcript data\nreturn {\n  json: {\n    transcript_id: 'test-' + Date.now(),\n    title: 'Test Discovery Call - Pricing Discussion',\n    date: new Date().toISOString(),\n    type: 'Prospect discovery',\n    team_id: 'YOUR-TEAM-ID-HERE',\n    segments: [\n      {\n        speaker_id: 0,\n        speaker_name: 'John Prospect',\n        text: 'I\\'m really concerned about the pricing. It seems expensive compared to what we\\'re paying now with Rippling.',\n        start_time: '00:01:30'\n      },\n      {\n        speaker_id: 1,\n        speaker_name: 'Sarah Seller',\n        text: 'I understand your concern about pricing. Let me break down the value you get. Our solution includes full support, unlimited users, and AI-powered insights that would cost extra with Rippling.',\n        start_time: '00:01:45'\n      },\n      {\n        speaker_id: 0,\n        speaker_name: 'John Prospect',\n        text: 'That\\'s helpful. What about implementation time? We need to be up and running by January.',\n        start_time: '00:02:15'\n      },\n      {\n        speaker_id: 1,\n        speaker_name: 'Sarah Seller',\n        text: 'Perfect timing! Our typical implementation is 2-3 weeks. We can definitely have you live before your January deadline.',\n        start_time: '00:02:30'\n      },\n      {\n        speaker_id: 0,\n        speaker_name: 'John Prospect',\n        text: 'Great. Can you send over a detailed proposal with pricing breakdown?',\n        start_time: '00:03:00'\n      },\n      {\n        speaker_id: 1,\n        speaker_name: 'Sarah Seller',\n        text: 'Absolutely. I\\'ll send that over today along with customer references in your industry.',\n        start_time: '00:03:10'\n      }\n    ],\n    speakers: [\n      {\n        id: 0,\n        first_name: 'John',\n        last_name: 'Prospect',\n        email: 'john@examplecorp.com',\n        organization: 'Example Corp',\n        role: 'Prospect',\n        title: 'VP of Operations'\n      },\n      {\n        id: 1,\n        first_name: 'Sarah',\n        last_name: 'Seller',\n        email: 'sarah@thatch.ai',\n        organization: 'Thatch',\n        role: 'Seller',\n        title: 'Account Executive'\n      }\n    ]\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "id": "set-test-data",
+      "name": "Create Test Transcript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json;\n\n// Format transcript for AI analysis\nconst formattedTranscript = data.segments.map(seg => {\n  return `[${seg.start_time}] **${seg.speaker_name}**: ${seg.text}`;\n}).join('\\n\\n');\n\nreturn {\n  json: {\n    ...data,\n    formatted_transcript: formattedTranscript,\n    participants_summary: data.speakers.map(s => \n      `${s.first_name} ${s.last_name} (${s.role}) - ${s.organization}`\n    ).join('\\n')\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300],
+      "id": "format-for-ai",
+      "name": "Format for AI"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "text",
+        "operation": "message",
+        "model": "gpt-5.1",
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 1000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a sales performance analyst. Analyze call transcripts and extract insights.\n\nProvide a JSON response with:\n- summary (150 words max)\n- objections (array of strings)\n- competitors_mentioned (array)\n- sentiment (positive/neutral/negative)\n- deal_velocity_score (0-1)\n- key_insights (array of 3-5 insights)"
+            },
+            {
+              "role": "user",
+              "content": "=Analyze this sales call:\n\nTitle: {{ $json.title }}\nType: {{ $json.type }}\nDate: {{ $json.date }}\n\nParticipants:\n{{ $json.participants_summary }}\n\nTranscript:\n{{ $json.formatted_transcript }}"
+            }
+          ]
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.4,
+      "position": [840, 300],
+      "id": "gpt-5-analysis",
+      "name": "GPT-5.1 Analysis"
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_processed",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $('Create Test Transcript').item.json.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $('Create Test Transcript').item.json.date }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "={{ $('Create Test Transcript').item.json.type }}"
+            },
+            {
+              "fieldId": "speakers",
+              "fieldValue": "={{ $('Create Test Transcript').item.json.speakers }}"
+            },
+            {
+              "fieldId": "segments",
+              "fieldValue": "={{ $('Create Test Transcript').item.json.segments }}"
+            },
+            {
+              "fieldId": "custom_summaries",
+              "fieldValue": "={{ { gpt5_analysis: $json.message.content } }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "YOUR-TEAM-ID-HERE"
+            },
+            {
+              "fieldId": "is_summarized",
+              "fieldValue": true
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1040, 300],
+      "id": "save-to-db",
+      "name": "Save to Supabase"
+    }
+  ],
+  "connections": {
+    "Start Here": {
+      "main": [[{"node": "Create Test Transcript", "type": "main", "index": 0}]]
+    },
+    "Create Test Transcript": {
+      "main": [[{"node": "Format for AI", "type": "main", "index": 0}]]
+    },
+    "Format for AI": {
+      "main": [[{"node": "GPT-5.1 Analysis", "type": "main", "index": 0}]]
+    },
+    "GPT-5.1 Analysis": {
+      "main": [[{"node": "Save to Supabase", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "tags": []
+}
+

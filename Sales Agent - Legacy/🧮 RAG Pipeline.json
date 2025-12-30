@@ -1,0 +1,832 @@
+{
+  "name": "🧮 RAG Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Download Processed Transcript",
+        "height": 944,
+        "width": 548,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2272,
+        624
+      ],
+      "id": "0095d6ed-b8d8-453b-810b-3cd1fc381821",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Identify Call Type",
+        "height": 944,
+        "width": 928,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2848,
+        624
+      ],
+      "id": "e940f08c-5447-4820-8975-655cc2e1bb4f",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Summarize and Evaluate Calls",
+        "height": 944,
+        "width": 552,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        624
+      ],
+      "id": "a66b55d8-67be-4731-8f74-b2f4eac83b1b",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "transcript_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        2304,
+        1056
+      ],
+      "id": "41991490-74d4-4158-98a3-10faaf303efd",
+      "name": "Transcript id"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.transcript_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        1056
+      ],
+      "id": "10c48f3c-2a28-4b62-9551-681011bf5087",
+      "name": "Get transcript from DB",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "transcripts_fireflies"
+    },
+    {
+      "parameters": {
+        "jsCode": "const transcript = $('Get transcript from DB').first().json;\nconst segments = transcript.segments || [];\nconst speakers = transcript.speakers || {};\n\n// Helper functions\nfunction safeAdd(obj, key, val) {\n  if (val !== null && val !== undefined && val !== '') {\n    obj[key] = val;\n  }\n}\n\nfunction checkCompetitorMentions(dialogue, competitors) {\n  if (!competitors || !Array.isArray(competitors) || competitors.length === 0) {\n    return [];\n  }\n  \n  const text = dialogue.toLowerCase();\n  const mentionedCompetitors = [];\n  \n  competitors.forEach(competitor => {\n    if (!competitor || typeof competitor !== 'string') return;\n    \n    const cleanName = competitor.toLowerCase().trim();\n    const patterns = [\n      cleanName,\n      cleanName.replace(/\\s+(inc|llc|corp|corporation|ltd|limited)\\.?$/i, ''),\n      cleanName.split(' ')[0]\n    ].filter(pattern => pattern && pattern.length > 2);\n    \n    const isFound = patterns.some(pattern => {\n      const regex = new RegExp(`\\\\b${pattern.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\\\b`, 'i');\n      return regex.test(text);\n    });\n    \n    if (isFound) {\n      mentionedCompetitors.push(competitor);\n    }\n  });\n  \n  return mentionedCompetitors;\n}\n\n// Segment content types detection\nfunction detectContentTypes(fullDialogue, competitors) {\n  const text = fullDialogue.toLowerCase();\n  const mentionedCompetitors = checkCompetitorMentions(fullDialogue, competitors);\n  \n  return {\n    topics: {\n      pricing: /(\\$|\\b(price|pricing|cost|budget|discount|fee|investment|roi|afford|quote|proposal)\\b|how much|what.*cost|pricing.*model|budget.*for|too expensive|can.*afford|within.*budget|price.*range|cost.*prohibitive)/.test(text),\n      objection: /(\\b(concern|worried|hesitant|problem|issue|challenge|risk|doubt|skeptical)\\b|not sure|but what|however|what if|why should|i don't|we don't|that won't|doesn't seem|not convinced|push.*back)/.test(text),\n      competitor: mentionedCompetitors.length > 0,\n      feature: /(\\b(feature|functionality|capability|integration|api|dashboard|reporting|analytics|customization|module|tool|platform)\\b|does it|can it|will it|how does.*work|what about|technical.*spec)/.test(text),\n      pain_point: /(\\b(pain|struggle|difficult|challenge|frustrating|time-consuming|inefficient|manual|broken)\\b|doesn't work|can't do|unable to|waste.*time|too slow|not working|current.*problem|existing.*issue)/.test(text),\n      use_case: /(\\b(use case|scenario|example|workflow|process|situation)\\b|how we|when we|if we|our team|our company|we need|we want|we're looking|we currently|our process)/.test(text),\n      timeline: /(\\b(timeline|deadline|schedule|launch|go-live|implementation|rollout|asap|urgent|priority)\\b|when can|how long|by when|need.*by|start.*date|end.*date|time.*frame|quick.*start)/.test(text),\n      decision_maker: /(\\b(decision|approve|budget authority|boss|ceo|cto|cfo|director|vp|stakeholder|executive|owner)\\b|sign off|final.*say|make.*call|green.*light|buy.*in|leadership team|board|who.*decides)/.test(text),\n      next_steps: /(\\b(next step|follow up|schedule|meeting|demo|proposal|contract|trial|pilot|poc|evaluation)\\b|what's next|move forward|proceed|continue|set up|arrange|send over|get started)/.test(text)\n    },\n    competitors_mentioned: mentionedCompetitors\n  };\n}\n\n// Extract filterable data and build speakersById map based on actual speaker.id\nfunction extractFilterableData(transcript) {\n  const accountNames = Array.isArray(transcript.accounts) \n    ? transcript.accounts.map(acc => acc.name).filter(Boolean)\n    : [];\n  \n  const speakerInfo = Array.isArray(transcript.speakers) && transcript.speakers.length > 0\n    ? transcript.speakers.map(s => ({\n        id: s.id,\n        name: `${s.first_name || ''} ${s.last_name || ''}`.trim(),\n        first_name: s.first_name,\n        last_name: s.last_name,\n        email: s.email,\n        title: s.title,\n        role: s.role,\n        organization: s.organization\n      })).filter(s => s.name)\n    : [];\n    \n  // Map speaker.id to speaker info for quick lookup\n  const speakersById = {};\n  if (Array.isArray(transcript.speakers)) {\n    transcript.speakers.forEach(speaker => {\n      if (speaker.id !== undefined && speaker.id !== null) {\n        speakersById[speaker.id] = speaker;\n      }\n    });\n  }\n  \n  const competitorNames = Array.isArray(transcript.competitors) \n    ? transcript.competitors.map(comp => comp.name || comp).filter(Boolean)\n    : [];\n    \n  const metrics = transcript.custom_metrics || {};\n  \n  return {\n    accountNames,\n    speakerInfo, \n    speakersById,\n    competitorNames,\n    metrics\n  };\n}\n\n// Compose full dialogue with timestamp, speaker name and organization/role\nfunction getFullDialogue(prev, current, next) {\n  const parts = [];\n  \n  const formatSegment = (segment) => {\n    if (!segment?.dialogue) return null;\n    \n    const speakerName = segment.name || 'Speaker';\n    const org = segment.organization || '';\n    const role = segment.role || '';\n    const timestamp = segment.timestamp || '[00:00:00]';\n    \n    const attribution = [];\n    if (org) attribution.push(org);\n    if (role) attribution.push(role);\n    \n    const attributionText = attribution.length > 0 ? ` *(${attribution.join(', ')})*` : '';\n    \n    return `[${timestamp}] **${speakerName}**${attributionText}: ${segment.dialogue}`;\n  };\n  \n  [prev, current, next].forEach(segment => {\n    const formatted = formatSegment(segment);\n    if (formatted) parts.push(formatted);\n  });\n  \n  return parts.join(' | ');\n}\n\n// Create speaker object with speaker.id matching\nfunction withSpeaker(seg, speakersById) {\n  if (!seg) return null;\n  \n  const sid = seg.speaker_id;\n  const info = speakersById[sid] || {};\n  const out = {};\n  \n  safeAdd(out, 'timestamp', seg.start_time);\n  \n  const firstName = info.first_name?.trim() || '';\n  const lastName = info.last_name?.trim() || '';\n  \n  if (firstName || lastName) {\n    safeAdd(out, 'name', `${firstName} ${lastName}`.trim());\n  } else if (sid !== undefined && sid !== null) {\n    safeAdd(out, 'name', `Speaker ${sid}`);\n  }\n  \n  safeAdd(out, 'email', info.email);\n  safeAdd(out, 'title', info.title);\n  safeAdd(out, 'organization', info.organization);\n  safeAdd(out, 'role', info.role);\n  safeAdd(out, 'dialogue', seg.text);\n  \n  return out;\n}\n\n// Process custom summaries\nfunction processSummaries(transcript, sharedMetadata) {\n  const summaries = [];\n  const customSummaries = transcript.custom_summaries || {};\n  \n  Object.entries(customSummaries).forEach(([summaryType, summaryText]) => {\n    if (summaryText && summaryText.trim()) {\n      const summaryData = {\n        metadata: {\n          parent_id: transcript.id,\n          vector_type: 'transcript_summary',\n          summary_type: summaryType,\n          ...sharedMetadata\n        },\n        pageContent: `[${summaryType.charAt(0).toUpperCase() + summaryType.slice(1)} summary] ${summaryText}`\n      };\n      \n      summaries.push(summaryData);\n    }\n  });\n  \n  return summaries;\n}\n\n// Main processing function\nfunction processTranscript() {\n  const result = [];\n  const errors = [];\n  const { accountNames, speakerInfo, speakersById, competitorNames, metrics } = extractFilterableData(transcript);\n  \n  // Debug logging - remove in production\n  console.log(`Processing transcript ${transcript.id}:`);\n  console.log(`- Segments count: ${segments.length}`);\n  console.log(`- Speakers count: ${Object.keys(speakersById).length}`);\n  console.log(`- Speaker IDs: ${Object.keys(speakersById).join(', ')}`);\n  \n  // Create speakers array for metadata\n  const speakersArray = speakerInfo.map(s => ({\n    name: s.name || null,\n    email: s.email || null,\n    organization: s.organization || null,\n    role: s.role || null\n  }));\n\n  // Flatten metrics keys with transcript_ prefix\n  const flatMetrics = {};\n  Object.entries(metrics).forEach(([key, value]) => {\n    flatMetrics[`transcript_${key}`] = value;\n  });\n  \n  // Shared metadata with all necessary data\n  const sharedMetadata = {\n    date: transcript.date?.slice(0, 10) || null,\n    call_type: transcript.type || null,\n    accounts: accountNames,\n    speakers: speakersArray,\n    competitors: competitorNames,\n    ...flatMetrics\n  };\n  \n  try {\n    // Process custom summaries first\n    const summaryItems = processSummaries(transcript, sharedMetadata);\n    result.push(...summaryItems);\n    console.log(`Added ${summaryItems.length} summary items`);\n    \n    // Process transcript segments - FIXED CONDITIONS\n    if (segments && Array.isArray(segments) && segments.length > 0) {\n      console.log(`Starting segment processing for ${segments.length} segments`);\n      \n      // Process ALL segments, not just middle ones\n      for (let i = 0; i < segments.length; i++) {\n        try {\n          // Handle edge cases for prev/next segments\n          const prevSegment = i > 0 ? withSpeaker(segments[i - 1], speakersById) : null;\n          const currentSegment = withSpeaker(segments[i], speakersById);\n          const nextSegment = i < segments.length - 1 ? withSpeaker(segments[i + 1], speakersById) : null;\n\n          if (!currentSegment) {\n            console.log(`Segment ${i}: No current segment data`);\n            errors.push(`Segment ${i}: No current segment data`);\n            continue;\n          }\n\n          if (!currentSegment.dialogue || currentSegment.dialogue.trim() === '') {\n            console.log(`Segment ${i}: Missing or empty dialogue content`);\n            errors.push(`Segment ${i}: Missing or empty dialogue content`);\n            continue;\n          }\n          \n          // Create dialogue with available segments\n          const segmentsToProcess = [prevSegment, currentSegment, nextSegment].filter(Boolean);\n          if (segmentsToProcess.length === 0) {\n            console.log(`Segment ${i}: No segments to process`);\n            continue;\n          }\n          \n          const fullDialogue = getFullDialogue(prevSegment, currentSegment, nextSegment);\n          \n          if (!fullDialogue || fullDialogue.trim() === '') {\n            console.log(`Segment ${i}: Empty full dialogue`);\n            continue;\n          }\n          \n          const contentTypes = detectContentTypes(fullDialogue, competitorNames);\n          \n          // Flatten topics to top-level segment_ prefixed booleans\n          const flatTopics = {};\n          Object.entries(contentTypes.topics).forEach(([topic, present]) => {\n            flatTopics[`segment_${topic}`] = present;\n          });\n          \n          const metadata = {\n            parent_id: transcript.id,\n            vector_type: 'transcript_segment',\n            segment_index: i,\n            ...sharedMetadata,\n            current_speaker: {\n              name: currentSegment.name || null,\n              email: currentSegment.email || null,\n              organization: currentSegment.organization || null,\n              role: currentSegment.role || null,\n            },\n            ...flatTopics\n          };\n          \n          const segmentData = {\n            metadata,\n            pageContent: fullDialogue\n          };\n          \n          result.push(segmentData);\n          console.log(`Added segment ${i}: ${currentSegment.name || 'Unknown'}`);\n          \n        } catch (error) {\n          const errorMsg = `Segment ${i} processing failed: ${error.message}`;\n          console.error(errorMsg);\n          errors.push(errorMsg);\n          \n          // Don't throw on individual segment errors, continue processing\n          continue;\n        }\n      }\n    } else {\n      console.log('No segments to process or segments is not an array');\n      console.log('Segments data:', segments);\n    }\n    \n    console.log(`Final result count: ${result.length} items`);\n    console.log(`Errors encountered: ${errors.length}`);\n    \n    if (result.length === 0) {\n      throw new Error(`No items generated for transcript ${transcript.id}. Errors: ${errors.join('; ')}`);\n    }\n    \n    return result;\n    \n  } catch (error) {\n    console.error(`Transcript processing failed: ${error.message}`);\n    throw new Error(`Transcript processing failed: ${error.message}. Transcript ID: ${transcript?.id || 'unknown'}`);\n  }\n}\n\nreturn processTranscript();\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        1056
+      ],
+      "id": "03479dac-dd50-46bd-9e7b-1abf3bf66d4c",
+      "name": "Prepare dialogue"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3264,
+        864
+      ],
+      "id": "308f95dc-51b4-4c33-963c-ac1aa8c5fe21",
+      "name": "text-embedding-3-small",
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Complete Supabase Vector RAG Setup: UUID Table Rebuild\n\n## **Table Creation with UUID Primary Key**\n\n```sql\n-- Enable UUID extension if not already enabled\nCREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";\n\n-- Create optimized table with UUID primary key\nCREATE TABLE transcripts_vectorized (\n  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n  created_at TIMESTAMPTZ DEFAULT NOW(),\n  metadata JSONB NOT NULL,\n  content TEXT NOT NULL,\n  embedding VECTOR(1536) NOT NULL\n);\n\n-- Enable RLS for security\nALTER TABLE transcripts_vectorized ENABLE ROW LEVEL SECURITY;\n\n-- Add basic RLS policy (adjust based on your auth requirements)\nCREATE POLICY \"Enable read access for authenticated users\" ON transcripts_vectorized\n  FOR SELECT USING (auth.role() = 'authenticated');\n\nCREATE POLICY \"Enable insert access for authenticated users\" ON transcripts_vectorized\n  FOR INSERT WITH CHECK (auth.role() = 'authenticated');\n```\n\n## **Additional Performance Configurations**\n\n### **Database Settings Optimization**\n```sql\n-- Optimize for vector operations and JSONB queries\nALTER SYSTEM SET max_parallel_workers_per_gather = 4;\nALTER SYSTEM SET maintenance_work_mem = '512MB';\nALTER SYSTEM SET effective_cache_size = '4GB';\nALTER SYSTEM SET random_page_cost = 1.1;\n\n-- HNSW specific settings for better vector performance\nALTER SYSTEM SET hnsw.ef_search = 200;\n\n-- JSONB optimization\nALTER SYSTEM SET gin_pending_list_limit = '4MB';\n\n-- Reload configuration\nSELECT pg_reload_conf();\n```\n\n### **Table-Level Optimizations**\n```sql\n-- Set storage parameters for better performance\nALTER TABLE transcripts_vectorized SET (\n  fillfactor = 90,\n  autovacuum_vacuum_scale_factor = 0.1,\n  autovacuum_analyze_scale_factor = 0.05\n);\n\n-- Optimize TOAST storage for large content/metadata\nALTER TABLE transcripts_vectorized ALTER COLUMN content SET STORAGE EXTERNAL;\nALTER TABLE transcripts_vectorized ALTER COLUMN metadata SET STORAGE EXTERNAL;\n\n-- Set statistics target for better query planning\nALTER TABLE transcripts_vectorized ALTER COLUMN metadata SET STATISTICS 1000;\n```\n\n## **Complete Index Creation Script**\n\n```sql\n-- =====================================================\n-- COMPLETE SUPABASE VECTOR RAG INDEX SCRIPT\n-- =====================================================\n\n-- Core Performance Indexes\n-- =====================================================\n\n-- Critical HNSW index for vector similarity search\nCREATE INDEX idx_embedding_hnsw ON transcripts_vectorized \nUSING hnsw (embedding vector_cosine_ops)\nWITH (m = 16, ef_construction = 64);\n\n-- Full-text search for hybrid RAG\nCREATE INDEX idx_content_fts ON transcripts_vectorized \nUSING gin (to_tsvector('english', content));\n\n-- Basic metadata filters\nCREATE INDEX idx_parent_id ON transcripts_vectorized ((metadata->>'parent_id'));\nCREATE INDEX idx_vector_type ON transcripts_vectorized ((metadata->>'vector_type'));\nCREATE INDEX idx_date ON transcripts_vectorized ((metadata->>'date'));\nCREATE INDEX idx_call_type ON transcripts_vectorized ((metadata->>'call_type'));\nCREATE INDEX idx_created_at ON transcripts_vectorized (created_at);\n\n-- Flattened Transcript Metrics Indexes\n-- =====================================================\n\nCREATE INDEX idx_transcript_clarity ON transcripts_vectorized (((metadata->>'transcript_clarity')::double precision));\nCREATE INDEX idx_transcript_velocity ON transcripts_vectorized (((metadata->>'transcript_velocity')::double precision));\nCREATE INDEX idx_transcript_sentiment ON transcripts_vectorized (((metadata->>'transcript_sentiment')::double precision));\nCREATE INDEX idx_transcript_persuasion ON transcripts_vectorized (((metadata->>'transcript_persuasion')::double precision));\nCREATE INDEX idx_transcript_resistance ON transcripts_vectorized (((metadata->>'transcript_resistance')::double precision));\nCREATE INDEX idx_transcript_questioning ON transcripts_vectorized (((metadata->>'transcript_questioning')::double precision));\nCREATE INDEX idx_transcript_listen_ratio ON transcripts_vectorized (((metadata->>'transcript_listen_ratio')::double precision));\nCREATE INDEX idx_transcript_objection_handling ON transcripts_vectorized (((metadata->>'transcript_objection_handling')::double precision));\nCREATE INDEX idx_transcript_call_structure ON transcripts_vectorized (((metadata->>'transcript_call_structure')::double precision));\nCREATE INDEX idx_transcript_active_listening ON transcripts_vectorized (((metadata->>'transcript_active_listening')::double precision));\nCREATE INDEX idx_transcript_product_knowledge ON transcripts_vectorized (((metadata->>'transcript_product_knowledge')::double precision));\nCREATE INDEX idx_transcript_relationship_development ON transcripts_vectorized (((metadata->>'transcript_relationship_development')::double precision));\nCREATE INDEX idx_transcript_pricing_sensitivity ON transcripts_vectorized (((metadata->>'transcript_pricing_sensitivity')::double precision));\n\n-- Segment Topic Indexes (Partial)\n-- =====================================================\n\nCREATE INDEX idx_segment_pricing ON transcripts_vectorized (((metadata->>'segment_pricing')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_objection ON transcripts_vectorized (((metadata->>'segment_objection')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_competitor ON transcripts_vectorized (((metadata->>'segment_competitor')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_feature ON transcripts_vectorized (((metadata->>'segment_feature')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_pain_point ON transcripts_vectorized (((metadata->>'segment_pain_point')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_use_case ON transcripts_vectorized (((metadata->>'segment_use_case')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_timeline ON transcripts_vectorized (((metadata->>'segment_timeline')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_decision_maker ON transcripts_vectorized (((metadata->>'segment_decision_maker')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_segment_next_steps ON transcripts_vectorized (((metadata->>'segment_next_steps')::boolean)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\n-- Speaker and Entity Indexes\n-- =====================================================\n\n-- Speakers array (structured objects)\nCREATE INDEX idx_speakers ON transcripts_vectorized USING gin ((metadata->'speakers'));\n\n-- Current speaker fields (partial indexes)\nCREATE INDEX idx_current_speaker_name ON transcripts_vectorized ((metadata->'current_speaker'->>'name')) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_current_speaker_email ON transcripts_vectorized ((metadata->'current_speaker'->>'email')) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_current_speaker_role ON transcripts_vectorized ((metadata->'current_speaker'->>'role')) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\nCREATE INDEX idx_current_speaker_org ON transcripts_vectorized ((metadata->'current_speaker'->>'organization')) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\n-- Business entities\nCREATE INDEX idx_accounts ON transcripts_vectorized USING gin ((metadata->'accounts'));\nCREATE INDEX idx_competitors ON transcripts_vectorized USING gin ((metadata->'competitors'));\n\n-- Summary and segment specific\nCREATE INDEX idx_summary_type ON transcripts_vectorized ((metadata->>'summary_type')) \nWHERE (metadata->>'vector_type') = 'transcript_summary';\n\nCREATE INDEX idx_segment_index ON transcripts_vectorized (((metadata->>'segment_index')::int)) \nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\n-- Composite Indexes for Common Query Patterns\n-- =====================================================\n\nCREATE INDEX idx_vector_type_date ON transcripts_vectorized ((metadata->>'vector_type'), (metadata->>'date'));\nCREATE INDEX idx_call_type_sentiment ON transcripts_vectorized ((metadata->>'call_type'), ((metadata->>'transcript_sentiment')::double precision));\nCREATE INDEX idx_role_clarity ON transcripts_vectorized ((metadata->'current_speaker'->>'role'), ((metadata->>'transcript_clarity')::double precision))\nWHERE (metadata->>'vector_type') = 'transcript_segment';\n\n-- Update table statistics\nANALYZE transcripts_vectorized;\n```\n\n## **Complete Functions Script**\n\n```sql\n-- =====================================================\n-- COMPLETE SUPABASE VECTOR RAG FUNCTIONS SCRIPT\n-- =====================================================\n\n-- Main Search Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_transcripts(\n    query_embedding vector(1536),\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 10,\n    -- Basic filters\n    filter_vector_type text DEFAULT NULL,\n    filter_parent_id text DEFAULT NULL,\n    filter_date_start date DEFAULT NULL,\n    filter_date_end date DEFAULT NULL,\n    filter_call_type text DEFAULT NULL,\n    -- Speaker filters\n    filter_speaker_name text DEFAULT NULL,\n    filter_speaker_email text DEFAULT NULL,\n    filter_speaker_role text DEFAULT NULL,\n    filter_speaker_organization text DEFAULT NULL,\n    filter_account_name text DEFAULT NULL,\n    -- Current speaker filters\n    filter_current_speaker_name text DEFAULT NULL,\n    filter_current_speaker_role text DEFAULT NULL,\n    filter_current_speaker_email text DEFAULT NULL,\n    filter_current_speaker_org text DEFAULT NULL,\n    -- Summary filters\n    filter_summary_type text DEFAULT NULL,\n    -- Topic filters\n    filter_segment_pricing boolean DEFAULT NULL,\n    filter_segment_objection boolean DEFAULT NULL,\n    filter_segment_competitor boolean DEFAULT NULL,\n    filter_segment_feature boolean DEFAULT NULL,\n    filter_segment_pain_point boolean DEFAULT NULL,\n    filter_segment_use_case boolean DEFAULT NULL,\n    filter_segment_timeline boolean DEFAULT NULL,\n    filter_segment_decision_maker boolean DEFAULT NULL,\n    filter_segment_next_steps boolean DEFAULT NULL,\n    -- Competitor filters\n    filter_competitor_name text DEFAULT NULL,\n    -- Performance filters\n    min_transcript_clarity float DEFAULT NULL,\n    min_transcript_velocity float DEFAULT NULL,\n    min_transcript_sentiment float DEFAULT NULL,\n    min_transcript_persuasion float DEFAULT NULL,\n    max_transcript_resistance float DEFAULT NULL,\n    min_transcript_questioning float DEFAULT NULL,\n    min_transcript_listen_ratio float DEFAULT NULL,\n    min_transcript_objection_handling float DEFAULT NULL,\n    min_transcript_call_structure float DEFAULT NULL,\n    min_transcript_active_listening float DEFAULT NULL,\n    min_transcript_product_knowledge float DEFAULT NULL,\n    min_transcript_relationship_development float DEFAULT NULL,\n    max_transcript_pricing_sensitivity float DEFAULT NULL\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    vector_type text,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        t.metadata->>'vector_type' as vector_type,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        -- Basic filters\n        AND (filter_vector_type IS NULL OR t.metadata->>'vector_type' = filter_vector_type)\n        AND (filter_parent_id IS NULL OR t.metadata->>'parent_id' = filter_parent_id)\n        AND (filter_date_start IS NULL OR (t.metadata->>'date')::date >= filter_date_start)\n        AND (filter_date_end IS NULL OR (t.metadata->>'date')::date >'call_type' = filter_call_type)\n        -- Speaker filters (JSONB array operations)\n        AND (filter_speaker_name IS NULL OR EXISTS (\n            SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n            WHERE speaker->>'name' = filter_speaker_name\n        ))\n        AND (filter_speaker_email IS NULL OR EXISTS (\n            SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n            WHERE speaker->>'email' = filter_speaker_email\n        ))\n        AND (filter_speaker_role IS NULL OR EXISTS (\n            SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n            WHERE speaker->>'role' = filter_speaker_role\n        ))\n        AND (filter_speaker_organization IS NULL OR EXISTS (\n            SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n            WHERE speaker->>'organization' = filter_speaker_organization\n        ))\n        AND (filter_account_name IS NULL OR t.metadata->'accounts' ? filter_account_name)\n        -- Current speaker filters\n        AND (filter_current_speaker_name IS NULL OR t.metadata->'current_speaker'->>'name' = filter_current_speaker_name)\n        AND (filter_current_speaker_role IS NULL OR t.metadata->'current_speaker'->>'role' = filter_current_speaker_role)\n        AND (filter_current_speaker_email IS NULL OR t.metadata->'current_speaker'->>'email' = filter_current_speaker_email)\n        AND (filter_current_speaker_org IS NULL OR t.metadata->'current_speaker'->>'organization' = filter_current_speaker_org)\n        -- Summary filters\n        AND (filter_summary_type IS NULL OR t.metadata->>'summary_type' = filter_summary_type)\n        -- Topic filters\n        AND (filter_segment_pricing IS NULL OR (t.metadata->>'segment_pricing')::boolean = filter_segment_pricing)\n        AND (filter_segment_objection IS NULL OR (t.metadata->>'segment_objection')::boolean = filter_segment_objection)\n        AND (filter_segment_competitor IS NULL OR (t.metadata->>'segment_competitor')::boolean = filter_segment_competitor)\n        AND (filter_segment_feature IS NULL OR (t.metadata->>'segment_feature')::boolean = filter_segment_feature)\n        AND (filter_segment_pain_point IS NULL OR (t.metadata->>'segment_pain_point')::boolean = filter_segment_pain_point)\n        AND (filter_segment_use_case IS NULL OR (t.metadata->>'segment_use_case')::boolean = filter_segment_use_case)\n        AND (filter_segment_timeline IS NULL OR (t.metadata->>'segment_timeline')::boolean = filter_segment_timeline)\n        AND (filter_segment_decision_maker IS NULL OR (t.metadata->>'segment_decision_maker')::boolean = filter_segment_decision_maker)\n        AND (filter_segment_next_steps IS NULL OR (t.metadata->>'segment_next_steps')::boolean = filter_segment_next_steps)\n        -- Competitor filters\n        AND (filter_competitor_name IS NULL OR t.metadata->'competitors' ? filter_competitor_name)\n        -- Performance filters\n        AND (min_transcript_clarity IS NULL OR (t.metadata->>'transcript_clarity')::double precision >= min_transcript_clarity)\n        AND (min_transcript_velocity IS NULL OR (t.metadata->>'transcript_velocity')::double precision >= min_transcript_velocity)\n        AND (min_transcript_sentiment IS NULL OR (t.metadata->>'transcript_sentiment')::double precision >= min_transcript_sentiment)\n        AND (min_transcript_persuasion IS NULL OR (t.metadata->>'transcript_persuasion')::double precision >= min_transcript_persuasion)\n        AND (max_transcript_resistance IS NULL OR (t.metadata->>'transcript_resistance')::double precision >'transcript_questioning')::double precision >= min_transcript_questioning)\n        AND (min_transcript_listen_ratio IS NULL OR (t.metadata->>'transcript_listen_ratio')::double precision >= min_transcript_listen_ratio)\n        AND (min_transcript_objection_handling IS NULL OR (t.metadata->>'transcript_objection_handling')::double precision >= min_transcript_objection_handling)\n        AND (min_transcript_call_structure IS NULL OR (t.metadata->>'transcript_call_structure')::double precision >= min_transcript_call_structure)\n        AND (min_transcript_active_listening IS NULL OR (t.metadata->>'transcript_active_listening')::double precision >= min_transcript_active_listening)\n        AND (min_transcript_product_knowledge IS NULL OR (t.metadata->>'transcript_product_knowledge')::double precision >= min_transcript_product_knowledge)\n        AND (min_transcript_relationship_development IS NULL OR (t.metadata->>'transcript_relationship_development')::double precision >= min_transcript_relationship_development)\n        AND (max_transcript_pricing_sensitivity IS NULL OR (t.metadata->>'transcript_pricing_sensitivity')::double precision  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Speaker-focused Search Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_by_speaker(\n    query_embedding vector(1536),\n    filter_speaker_name text DEFAULT NULL,\n    filter_speaker_role text DEFAULT NULL,\n    filter_speaker_organization text DEFAULT NULL,\n    is_current_speaker boolean DEFAULT false,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 20\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    vector_type text,\n    speaker_info jsonb,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        t.metadata->>'vector_type' as vector_type,\n        CASE \n            WHEN is_current_speaker AND t.metadata->>'vector_type' = 'transcript_segment' \n            THEN t.metadata->'current_speaker'\n            ELSE t.metadata->'speakers'\n        END as speaker_info,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND (\n            (NOT is_current_speaker AND (\n                (filter_speaker_name IS NULL OR EXISTS (\n                    SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n                    WHERE speaker->>'name' = filter_speaker_name\n                ))\n                AND (filter_speaker_role IS NULL OR EXISTS (\n                    SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n                    WHERE speaker->>'role' = filter_speaker_role\n                ))\n                AND (filter_speaker_organization IS NULL OR EXISTS (\n                    SELECT 1 FROM jsonb_array_elements(t.metadata->'speakers') AS speaker\n                    WHERE speaker->>'organization' = filter_speaker_organization\n                ))\n            ))\n            OR (is_current_speaker AND t.metadata->>'vector_type' = 'transcript_segment' AND (\n                (filter_speaker_name IS NULL OR t.metadata->'current_speaker'->>'name' = filter_speaker_name)\n                AND (filter_speaker_role IS NULL OR t.metadata->'current_speaker'->>'role' = filter_speaker_role)\n                AND (filter_speaker_organization IS NULL OR t.metadata->'current_speaker'->>'organization' = filter_speaker_organization)\n            ))\n        )\n    ORDER BY t.embedding  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Competitor Analysis Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_competitor_mentions(\n    query_embedding vector(1536),\n    filter_competitor_name text DEFAULT NULL,\n    min_sentiment float DEFAULT NULL,\n    max_sentiment float DEFAULT NULL,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 15\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    competitor_context text,\n    sentiment_score float,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        t.metadata->>'call_type' as competitor_context,\n        (t.metadata->>'transcript_sentiment')::double precision as sentiment_score,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND (t.metadata->>'segment_competitor')::boolean = true\n        AND (filter_competitor_name IS NULL OR t.metadata->'competitors' ? filter_competitor_name)\n        AND (min_sentiment IS NULL OR (t.metadata->>'transcript_sentiment')::double precision >= min_sentiment)\n        AND (max_sentiment IS NULL OR (t.metadata->>'transcript_sentiment')::double precision  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Performance Analysis Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_high_performance_calls(\n    query_embedding vector(1536),\n    min_clarity float DEFAULT 0.8,\n    min_sentiment float DEFAULT 0.7,\n    min_persuasion float DEFAULT 0.7,\n    max_resistance float DEFAULT 0.3,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 10\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    call_type text,\n    clarity_score float,\n    sentiment_score float,\n    persuasion_score float,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        t.metadata->>'call_type' as call_type,\n        (t.metadata->>'transcript_clarity')::double precision as clarity_score,\n        (t.metadata->>'transcript_sentiment')::double precision as sentiment_score,\n        (t.metadata->>'transcript_persuasion')::double precision as persuasion_score,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND (t.metadata->>'transcript_clarity')::double precision >= min_clarity\n        AND (t.metadata->>'transcript_sentiment')::double precision >= min_sentiment\n        AND (t.metadata->>'transcript_persuasion')::double precision >= min_persuasion\n        AND (t.metadata->>'transcript_resistance')::double precision >'transcript_clarity')::double precision DESC,\n        (t.metadata->>'transcript_sentiment')::double precision DESC,\n        t.embedding  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Topic-Specific Search Functions\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_pricing_discussions(\n    query_embedding vector(1536),\n    min_pricing_sensitivity float DEFAULT NULL,\n    max_pricing_sensitivity float DEFAULT NULL,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 15\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    pricing_sensitivity float,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        (t.metadata->>'transcript_pricing_sensitivity')::double precision as pricing_sensitivity,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND (t.metadata->>'segment_pricing')::boolean = true\n        AND (min_pricing_sensitivity IS NULL OR (t.metadata->>'transcript_pricing_sensitivity')::double precision >= min_pricing_sensitivity)\n        AND (max_pricing_sensitivity IS NULL OR (t.metadata->>'transcript_pricing_sensitivity')::double precision  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Objection Handling Search Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_objection_handling(\n    query_embedding vector(1536),\n    min_objection_handling float DEFAULT 0.5,\n    filter_current_speaker_role text DEFAULT NULL,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 15\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    objection_handling_score float,\n    speaker_role text,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        (t.metadata->>'transcript_objection_handling')::double precision as objection_handling_score,\n        t.metadata->'current_speaker'->>'role' as speaker_role,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND (t.metadata->>'segment_objection')::boolean = true\n        AND (t.metadata->>'transcript_objection_handling')::double precision >= min_objection_handling\n        AND (filter_current_speaker_role IS NULL OR t.metadata->'current_speaker'->>'role' = filter_current_speaker_role)\n        AND t.metadata->>'vector_type' = 'transcript_segment'\n    ORDER BY \n        (t.metadata->>'transcript_objection_handling')::double precision DESC,\n        t.embedding  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Summary Search Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_summaries(\n    query_embedding vector(1536),\n    filter_summary_type text DEFAULT NULL,\n    filter_call_type text DEFAULT NULL,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 10\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    summary_type text,\n    call_type text,\n    content text,\n    metadata jsonb,\n    similarity float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    SELECT \n        t.id,\n        t.metadata->>'parent_id' as parent_id,\n        t.metadata->>'summary_type' as summary_type,\n        t.metadata->>'call_type' as call_type,\n        t.content,\n        t.metadata,\n        1 - (t.embedding  query_embedding) as similarity\n    FROM transcripts_vectorized t\n    WHERE 1 - (t.embedding  query_embedding) > match_threshold\n        AND t.metadata->>'vector_type' = 'transcript_summary'\n        AND (filter_summary_type IS NULL OR t.metadata->>'summary_type' = filter_summary_type)\n        AND (filter_call_type IS NULL OR t.metadata->>'call_type' = filter_call_type)\n    ORDER BY t.embedding  query_embedding\n    LIMIT match_count;\nEND;\n$$;\n\n-- Hybrid Text + Vector Search Function\n-- =====================================================\n\nCREATE OR REPLACE FUNCTION search_hybrid(\n    query_text text,\n    query_embedding vector(1536),\n    text_weight float DEFAULT 0.3,\n    vector_weight float DEFAULT 0.7,\n    match_threshold float DEFAULT 0.7,\n    match_count int DEFAULT 10\n)\nRETURNS TABLE(\n    id uuid,\n    parent_id text,\n    vector_type text,\n    content text,\n    metadata jsonb,\n    text_rank float,\n    vector_similarity float,\n    hybrid_score float\n) \nLANGUAGE plpgsql AS $$\nBEGIN\n    RETURN QUERY\n    WITH vector_search AS (\n        SELECT \n            t.id,\n            t.metadata->>'parent_id' as parent_id,\n            t.metadata->>'vector_type' as vector_type,\n            t.content,\n            t.metadata,\n            1 - (t.embedding  query_embedding) as vector_similarity\n        FROM transcripts_vectorized t\n        WHERE 1 - (t.embedding  query_embedding) > match_threshold\n    ),\n    text_search AS (\n        SELECT \n            id,\n            ts_rank(to_tsvector('english', content), plainto_tsquery('english', query_text)) as text_rank\n        FROM transcripts_vectorized\n        WHERE to_tsvector('english', content) @@ plainto_tsquery('english', query_text)\n    )\n    SELECT \n        v.id,\n        v.parent_id,\n        v.vector_type,\n        v.content,\n        v.metadata,\n        COALESCE(t.text_rank, 0) as text_rank,\n        v.vector_similarity,\n        (COALESCE(t.text_rank, 0) * text_weight + v.vector_similarity * vector_weight) as hybrid_score\n    FROM vector_search v\n    LEFT JOIN text_search t ON v.id = t.id\n    ORDER BY hybrid_score DESC\n    LIMIT match_count;\nEND;\n$$;\n```\n\n## **Performance Monitoring Functions**\n\n```sql\n-- Index Usage Analysis\nCREATE OR REPLACE FUNCTION analyze_index_usage()\nRETURNS TABLE(\n    index_name text,\n    index_size text,\n    index_scans bigint,\n    tuples_read bigint,\n    tuples_fetched bigint\n) \nLANGUAGE sql AS $$\n    SELECT \n        indexrelname as index_name,\n        pg_size_pretty(pg_relation_size(indexrelid)) as index_size,\n        idx_scan as index_scans,\n        idx_tup_read as tuples_read,\n        idx_tup_fetch as tuples_fetched\n    FROM pg_stat_user_indexes \n    WHERE schemaname = 'public' \n    AND relname = 'transcripts_vectorized'\n    ORDER BY idx_scan DESC;\n$$;\n\n-- Query Performance Analysis\nCREATE OR REPLACE FUNCTION analyze_query_performance()\nRETURNS TABLE(\n    calls bigint,\n    total_time double precision,\n    mean_time double precision,\n    query_text text\n) \nLANGUAGE sql AS $$\n    SELECT \n        calls,\n        total_exec_time,\n        mean_exec_time,\n        LEFT(query, 100) as query_text\n    FROM pg_stat_statements \n    WHERE query LIKE '%transcripts_vectorized%'\n    ORDER BY mean_exec_time DESC\n    LIMIT 10;\n$$;\n```\n\nThis complete setup provides:\n\n- **UUID primary keys** as requested\n- **Comprehensive indexing** for all metadata fields and query patterns\n- **Complete function suite** covering all your sales analytics agent needs\n- **Performance monitoring** tools\n- **Security configurations** with RLS\n- **Database optimization** settings for vector operations\n\nThe structure supports all your agent intents: pricing, performance, competitive, objection, speaker, feature, timeline, use case, process, and general queries with optimal performance.",
+        "height": 880,
+        "width": 1160,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        4432,
+        656
+      ],
+      "id": "5357743f-9268-4a2d-a6ba-e3f103759265",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "chunkSize": 4000
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterTokenSplitter",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        1344
+      ],
+      "id": "63ae6e7f-0872-404b-a133-f0ac194963ae",
+      "name": "Token Splitter"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.metadata.vector_type === 'transcript_summary' && $json.pageContent.length > 100 }}",
+                    "rightValue": "transcript_summary",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "671cb95e-5cd4-4924-9812-59106c1a611a"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Summaries"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "22e9cb8b-ac80-4848-86a3-48bd5a64189c",
+                    "leftValue": "={{ $json.metadata.vector_type === 'transcript_segment' && $json.pageContent.length > 100 }}",
+                    "rightValue": "transcript_segment",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Dialogue"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Invalid"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3072,
+        1040
+      ],
+      "id": "87bc240f-2cb6-47da-9a3e-9f00f788199f",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "parent_id",
+                "value": "={{ $json.metadata.parent_id }}"
+              },
+              {
+                "name": "vector_type",
+                "value": "={{ $json.metadata.vector_type }}"
+              },
+              {
+                "name": "date",
+                "value": "={{ $json.metadata.date }}"
+              },
+              {
+                "name": "call_type",
+                "value": "={{ $json.metadata.call_type }}"
+              },
+              {
+                "name": "summary_type",
+                "value": "={{ $json.metadata.summary_type }}"
+              },
+              {
+                "name": "account_names",
+                "value": "={{ $json.metadata.account_names }}"
+              },
+              {
+                "name": "speakers",
+                "value": "={{ $json.metadata.speakers }}"
+              },
+              {
+                "name": "speaker_emails",
+                "value": "={{ $json.metadata.speaker_emails }}"
+              },
+              {
+                "name": "speaker_roles",
+                "value": "={{ $json.metadata.speaker_roles }}"
+              },
+              {
+                "name": "speaker_organizations",
+                "value": "={{ $json.metadata.speaker_organizations }}"
+              },
+              {
+                "name": "speaker_titles",
+                "value": "={{ $json.metadata.speaker_titles }}"
+              },
+              {
+                "name": "competitor_names",
+                "value": "={{ $json.metadata.competitor_names }}"
+              },
+              {
+                "name": "competitors_mentioned",
+                "value": "={{ $json.metadata.competitors_mentioned }}"
+              },
+              {
+                "name": "metrics",
+                "value": "={{ $json.metadata.metrics }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        3376,
+        864
+      ],
+      "id": "84705857-43d8-48d5-ae38-8ebbef41c93f",
+      "name": "Summary loader"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "transcripts_vectorized",
+          "mode": "list",
+          "cachedResultName": "transcripts_vectorized"
+        },
+        "embeddingBatchSize": 5,
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.2,
+      "position": [
+        3264,
+        688
+      ],
+      "id": "d8494e7c-0df7-4fef-bd85-02aa293ffc55",
+      "name": "Vectorize summaries",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "transcripts_vectorized",
+          "mode": "list",
+          "cachedResultName": "transcripts_vectorized"
+        },
+        "embeddingBatchSize": 5,
+        "options": {
+          "queryName": "match_documents"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.2,
+      "position": [
+        3264,
+        1056
+      ],
+      "id": "16d8f0e9-78cb-48c9-94d4-e0f4be10cc53",
+      "name": "Vectorize dialogue",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "parent_id",
+                "value": "={{ $json.metadata.parent_id }}"
+              },
+              {
+                "name": "vector_type",
+                "value": "={{ $json.metadata.vector_type }}"
+              },
+              {
+                "name": "date",
+                "value": "={{ $json.metadata.date }}"
+              },
+              {
+                "name": "call_type",
+                "value": "={{ $json.metadata.call_type }}"
+              },
+              {
+                "name": "account_names",
+                "value": "={{ $json.metadata.account_names }}"
+              },
+              {
+                "name": "speakers",
+                "value": "={{ $json.metadata.speakers }}"
+              },
+              {
+                "name": "speaker_emails",
+                "value": "={{ $json.metadata.speaker_emails }}"
+              },
+              {
+                "name": "speaker_roles",
+                "value": "={{ $json.metadata.speaker_roles }}"
+              },
+              {
+                "name": "speaker_organizations",
+                "value": "={{ $json.metadata.speaker_organizations }}"
+              },
+              {
+                "name": "speaker_titles",
+                "value": "={{ $json.metadata.speaker_titles }}"
+              },
+              {
+                "name": "current_speaker",
+                "value": "={{ $('Switch').item.json.metadata.current_speaker }}"
+              },
+              {
+                "name": "competitor_names",
+                "value": "={{ $('Switch').item.json.metadata.competitor_names }}"
+              },
+              {
+                "name": "competitors_mentioned",
+                "value": "={{ $('Switch').item.json.metadata.competitors_mentioned }}"
+              },
+              {
+                "name": "topics",
+                "value": "={{ $('Switch').item.json.metadata.topics }}"
+              },
+              {
+                "name": "segment_index",
+                "value": "={{ $('Switch').item.json.metadata.segment_index }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        3360,
+        1248
+      ],
+      "id": "f8abec84-e8e8-4558-9de8-fa3b2fcbaeba",
+      "name": "Dialogue loader"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        3648,
+        1040
+      ],
+      "id": "ede10bd8-a61a-4ec9-b596-722a1569665f",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.error = 'invalid';\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        1440
+      ],
+      "id": "d32ba2f9-f06f-4226-b86c-97d1f4bae2f3",
+      "name": "Code",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_processed",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "is_vectorized",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        4032,
+        1056
+      ],
+      "id": "dc8742b2-cca6-4cb3-a805-3ac7dd070a06",
+      "name": "Update is_vectorized status",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return  {\n  vectorized_transcript: {\n    id: $json.id,\n    is_vectorized: $json.is_vectorized,\n    operation: $('Prepare output').first().json.operation\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4224,
+        1056
+      ],
+      "id": "f867d723-532d-4356-ac96-1f86e3b681c2",
+      "name": "Output operation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\nconst invalidItems = allItems.filter(e => e.json.error === 'invalid');\nconst blobItems = allItems.filter(e => e.json.metadata?.source === 'blob');\nconst errorItems = allItems.filter(e => \n  e.json.error !== 'invalid' && \n  e.json.metadata?.source !== 'blob'\n);\n\nreturn {\n  id: $('Get transcript from DB').first().json.id,\n  operation: {\n    items: allItems.length,\n    successful: blobItems.length,\n    invalid: invalidItems.length,\n    error: errorItems.length\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        1056
+      ],
+      "id": "50aa81aa-83d2-42a9-b8f7-760cd8a8cb6d",
+      "name": "Prepare output"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "transcripts_vectorized",
+        "filterType": "string",
+        "filterString": "=metadata->>parent_id=eq.{{ $json.id }}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        1056
+      ],
+      "id": "903b7f0d-bb1c-453c-97bb-0657f44b3299",
+      "name": "Delete previous embeddings",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        3264,
+        1248
+      ],
+      "id": "5bc35bd5-7d1e-4e0d-9a25-99adef2e29a2",
+      "name": "text-embedding-3-small1",
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chunkSize": 4000
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterTokenSplitter",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        960
+      ],
+      "id": "3a10c983-8363-4328-84f0-a8e221772480",
+      "name": "Token Splitter1"
+    }
+  ],
+  "pinData": {
+    "Transcript id": [
+      {
+        "json": {
+          "transcript_id": "ac03afad-089d-402f-a605-3bc67c0cbe42"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Transcript id": {
+      "main": [
+        [
+          {
+            "node": "Get transcript from DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get transcript from DB": {
+      "main": [
+        [
+          {
+            "node": "Delete previous embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare dialogue": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "text-embedding-3-small": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vectorize summaries",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Dialogue loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Vectorize summaries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Vectorize dialogue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summary loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Vectorize summaries",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vectorize summaries": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dialogue loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Vectorize dialogue",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vectorize dialogue": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Prepare output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update is_vectorized status": {
+      "main": [
+        [
+          {
+            "node": "Output operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare output": {
+      "main": [
+        [
+          {
+            "node": "Update is_vectorized status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete previous embeddings": {
+      "main": [
+        [
+          {
+            "node": "Prepare dialogue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "text-embedding-3-small1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Vectorize dialogue",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token Splitter1": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Summary loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "500dbdc0-8153-4fc4-9cec-ad63f4c2a0f1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "bQk86iR47E3py3KZ",
+  "tags": []
+}

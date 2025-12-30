@@ -1,0 +1,236 @@
+{
+  "name": "RAG Pipeline (Vectorization)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "returnAll": false,
+        "limit": 5,
+        "filterType": "string",
+        "filterString": "is_summarized=eq.true,is_vectorized=eq.false"
+      },
+      "id": "fetch-for-vectorization",
+      "name": "Fetch Summarized Transcripts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create chunks from transcript for vectorization\nconst transcript = $input.first().json;\n\nconst chunks = [];\nconst parentId = transcript.original_transcript_id || transcript.id;\nconst baseMetadata = {\n  parent_id: parentId,\n  title: transcript.title,\n  date: transcript.date,\n  team_id: transcript.team_id,\n  type: transcript.type,\n  speakers: transcript.speakers,\n  accounts: transcript.accounts\n};\n\n// 1. Create chunk for executive summary\nif (transcript.summaries?.executive_summary) {\n  chunks.push({\n    content: `Executive Summary: ${transcript.summaries.executive_summary}`,\n    metadata: {\n      ...baseMetadata,\n      vector_type: 'summary',\n      summary_type: 'executive'\n    }\n  });\n}\n\n// 2. Create chunks for key insights\nif (transcript.summaries?.key_insights) {\n  transcript.summaries.key_insights.forEach((insight, idx) => {\n    chunks.push({\n      content: `Key Insight: ${insight.insight} (Importance: ${insight.importance})`,\n      metadata: {\n        ...baseMetadata,\n        vector_type: 'insight',\n        importance: insight.importance,\n        insight_index: idx\n      }\n    });\n  });\n}\n\n// 3. Create chunks for action items\nif (transcript.summaries?.action_items) {\n  transcript.summaries.action_items.forEach((item, idx) => {\n    chunks.push({\n      content: `Action Item: ${item.action} (Owner: ${item.owner}, Deadline: ${item.deadline})`,\n      metadata: {\n        ...baseMetadata,\n        vector_type: 'action_item',\n        owner: item.owner,\n        action_index: idx\n      }\n    });\n  });\n}\n\n// 4. Create chunks for objections\nif (transcript.summaries?.objections_identified) {\n  transcript.summaries.objections_identified.forEach((obj, idx) => {\n    chunks.push({\n      content: `Objection: ${obj.objection} (Handled: ${obj.was_handled}, Quality: ${obj.handling_quality}/10)`,\n      metadata: {\n        ...baseMetadata,\n        vector_type: 'objection',\n        was_handled: obj.was_handled,\n        handling_quality: obj.handling_quality\n      }\n    });\n  });\n}\n\n// 5. Create chunks for coaching recommendations\nif (transcript.summaries?.coaching_recommendations) {\n  transcript.summaries.coaching_recommendations.forEach((rec, idx) => {\n    chunks.push({\n      content: `Coaching: ${rec.area} - ${rec.recommendation} (Priority: ${rec.priority})`,\n      metadata: {\n        ...baseMetadata,\n        vector_type: 'coaching',\n        area: rec.area,\n        priority: rec.priority\n      }\n    });\n  });\n}\n\n// 6. Create chunks for competitor mentions\nif (transcript.summaries?.competitor_mentions) {\n  transcript.summaries.competitor_mentions.forEach((comp, idx) => {\n    chunks.push({\n      content: `Competitor Mention: ${comp.competitor} - ${comp.context} (Sentiment: ${comp.sentiment})`,\n      metadata: {\n        ...baseMetadata,\n        vector_type: 'competitor',\n        competitor_name: comp.competitor,\n        sentiment: comp.sentiment\n      }\n    });\n  });\n}\n\n// 7. Create chunk for next steps\nif (transcript.summaries?.next_steps) {\n  chunks.push({\n    content: `Next Steps: ${transcript.summaries.next_steps}`,\n    metadata: {\n      ...baseMetadata,\n      vector_type: 'next_steps'\n    }\n  });\n}\n\n// 8. Create chunk for deal info\nif (transcript.summaries?.call_outcome || transcript.summaries?.deal_stage) {\n  chunks.push({\n    content: `Deal Status: ${transcript.summaries.call_outcome || 'Unknown'}, Stage: ${transcript.summaries.deal_stage || 'Unknown'}, Risk Score: ${transcript.summaries.deal_risk_score || 'N/A'}/10. Risk Factors: ${(transcript.summaries.deal_risk_factors || []).join(', ')}`,\n    metadata: {\n      ...baseMetadata,\n      vector_type: 'deal_status',\n      call_outcome: transcript.summaries.call_outcome,\n      deal_stage: transcript.summaries.deal_stage,\n      deal_risk_score: transcript.summaries.deal_risk_score\n    }\n  });\n}\n\n// 9. Create overall transcript chunk (for general queries)\nchunks.push({\n  content: `Sales Call: ${transcript.title}. Date: ${transcript.date}. Type: ${transcript.type}. Duration: ${Math.round(transcript.duration_seconds/60)} minutes. Summary: ${transcript.summaries?.executive_summary || 'No summary available'}. Outcome: ${transcript.summaries?.call_outcome || 'Unknown'}. Next Steps: ${transcript.summaries?.next_steps || 'None specified'}.`,\n  metadata: {\n    ...baseMetadata,\n    vector_type: 'full_transcript',\n    duration_seconds: transcript.duration_seconds,\n    call_outcome: transcript.summaries?.call_outcome,\n    deal_stage: transcript.summaries?.deal_stage\n  }\n});\n\nreturn {\n  json: {\n    transcript_id: transcript.id,\n    original_transcript_id: parentId,\n    chunks: chunks,\n    chunk_count: chunks.length\n  }\n};"
+      },
+      "id": "create-chunks",
+      "name": "Create Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split chunks into individual items for embedding\nconst input = $input.first().json;\nconst chunks = input.chunks;\n\nreturn chunks.map((chunk, index) => ({\n  json: {\n    ...chunk,\n    transcript_id: input.transcript_id,\n    original_transcript_id: input.original_transcript_id,\n    chunk_index: index,\n    total_chunks: chunks.length\n  }\n}));"
+      },
+      "id": "split-chunks",
+      "name": "Split into Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "model": "text-embedding-3-small",
+        "options": {}
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embedding",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE",
+          "name": "OpenAI Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare vector record for Supabase\nconst item = $input.first().json;\n\n// The embedding comes from the previous node\nconst embedding = item.embedding || item.data?.[0]?.embedding || [];\n\nreturn {\n  json: {\n    content: item.content,\n    metadata: JSON.stringify(item.metadata),\n    embedding: `[${embedding.join(',')}]`,\n    transcript_id: item.transcript_id,\n    original_transcript_id: item.original_transcript_id,\n    chunk_index: item.chunk_index\n  }\n};"
+      },
+      "id": "prepare-vector",
+      "name": "Prepare Vector Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "transcripts_vectorized",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "content": "={{ $json.content }}",
+            "metadata": "={{ $json.metadata }}",
+            "embedding": "={{ $json.embedding }}"
+          }
+        }
+      },
+      "id": "save-vector",
+      "name": "Save to Vector DB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_processed",
+        "matchingColumns": ["id"],
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Create Chunks').item.json.transcript_id }}",
+            "is_vectorized": true
+          }
+        }
+      },
+      "id": "mark-vectorized",
+      "name": "Mark as Vectorized",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1780, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summary output\nconst items = $input.all();\n\nreturn {\n  json: {\n    status: 'SUCCESS',\n    message: 'Transcript vectorized successfully',\n    vectors_created: items.length,\n    ready_for_search: true\n  }\n};"
+      },
+      "id": "success-output",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch Summarized Transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Summarized Transcripts": {
+      "main": [
+        [
+          {
+            "node": "Create Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Chunks": {
+      "main": [
+        [
+          {
+            "node": "Split into Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split into Items": {
+      "main": [
+        [
+          {
+            "node": "Generate Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embedding": {
+      "main": [
+        [
+          {
+            "node": "Prepare Vector Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Vector Record": {
+      "main": [
+        [
+          {
+            "node": "Save to Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Vector DB": {
+      "main": [
+        [
+          {
+            "node": "Mark as Vectorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Vectorized": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+
+

@@ -1,0 +1,138 @@
+{
+  "name": "✍🏻 Log Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "level"
+            },
+            {
+              "name": "author"
+            },
+            {
+              "name": "title"
+            },
+            {
+              "name": "message"
+            },
+            {
+              "name": "payload",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        448
+      ],
+      "id": "150c49de-efde-4259-a8a0-d99c898a4a30",
+      "name": "✍🏻 Log Handler"
+    },
+    {
+      "parameters": {
+        "tableId": "activity_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "level",
+              "fieldValue": "={{ $json.level }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "n8n"
+            },
+            {
+              "fieldId": "author",
+              "fieldValue": "={{ $json.author }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.message }}"
+            },
+            {
+              "fieldId": "payload",
+              "fieldValue": "={{ $json.payload }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        304
+      ],
+      "id": "4f90aad2-3d13-46f4-944c-791f6ffe0ee7",
+      "name": "Log to Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Log Handler\n\nEssential for observability. For now, logs to Supabase, but should be configured to notify Slack/email in case of warnings and errors.",
+        "height": 460,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        128,
+        128
+      ],
+      "id": "bf6f4faf-f215-4286-942a-b155ff55e328",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {
+    "✍🏻 Log Handler": [
+      {
+        "json": {
+          "level": null,
+          "author": null,
+          "title": null,
+          "message": null,
+          "payload": "{\"users\": [\n]}"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "✍🏻 Log Handler": {
+      "main": [
+        [
+          {
+            "node": "Log to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "023d8508-7ce2-4627-aba3-8abf84aeff78",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "nLxdJInLJUHTFMYi",
+  "tags": []
+}

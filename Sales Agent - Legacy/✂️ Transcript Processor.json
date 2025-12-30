@@ -1,0 +1,1470 @@
+{
+  "name": "✂️ Transcript Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Download Original Meeting Transcript",
+        "height": 1000,
+        "width": 460,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        128,
+        0
+      ],
+      "id": "1dde56ce-6611-46ea-81e6-da19a6bc3c07",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_fireflies",
+        "limit": 1,
+        "filterType": "string",
+        "filterString": "=id=eq.{{ $json.meeting_id }}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        592
+      ],
+      "id": "3e8cba18-d025-4fe7-b7e0-a48df22b87f4",
+      "name": "Get meeting from DB",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "notes": "transcripts_fireflies"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2800,
+        752
+      ],
+      "id": "c6ca8513-f821-408d-a615-1be764ec5ea7",
+      "name": "gpt-4.1-mini",
+      "credentials": {
+        "openAiApi": {
+          "id": "0BO4TUwJ9VocTtO9",
+          "name": "OpenAi (Sales Analyzer)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<PARTICIPANTS>\n{{ $json.participants.toJsonString() }}\n</PARTICIPANTS>\n\n<SPEAKERS>\n{{ $('Get meeting from DB').item.json.raw_data.speakers.toJsonString() }}\n</SPEAKERS>",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=# Transcript cleaner\n\n## Role\nYou are an expert in transcript processing and cleaning.\n\n## Goal\nYou will match the speakers in this meeting with the corresponding participant details, and output speakers with enriched details, as well as the identified organization accounts (except Thatch).\n\n## Instructions\n  1. Review all the <SPEAKERS> and <PARTICIPANTS> and think of how you can best match their details.\n  2. Always preserve the original speaker id.\n  3. If a speaker is identified as a participant, enrich the speaker with the exact participant details.\n  4. If a speaker is not identified among participants, they might be other people from the participating non-Thatch organization that is Employer, Partner, or Prospect:\n     - Infer the email formula (e.g. firstname.lastname@organization.com) from other participants in the organization.\n     - Infer the organization and role from other participants organization (not Thatch).\n     - Enrich the speaker with the inferred details.\n     - Example: a participant in a meeting is John Grossman, organization: Senetic, email: j.grossman@senetic.com, role: Employer. A speaker named Sara Rainier cannot be matched among participants. It is very likely that Sara's email is s.rainier@senetic.com, organization: Senetic, role: Employer.\n   5. Identify the participant organizations that are not Thatch, and output their account_id, organization name, and role. \n\n## Output\n- {{ $('Get meeting from DB').item.json.raw_data.speakers.length }} speakers, and found accounts. Example output:\n\n```json\n[\n  {\n    \"output\": {\n      \"speakers\": [\n        {\n          \"id\": 0,\n          \"first_name\": \"Ioana\",\n          \"last_name\": \"Staniloiu\",\n          \"title\": \"Senior HR Business Partner\",\n          \"email\": \"ioana.staniloiu@tradeshift.com\",\n          \"organization\": \"Tradeshift\",\n          \"role\": \"Prospect\"\n        },\n        {\n          \"id\": 1,\n          \"first_name\": \"Nikos\",\n          \"last_name\": \"Delagrammatikas\",\n          \"title\": \"Account Executive\",\n          \"email\": \"nikos@thatch.ai\",\n          \"organization\": \"Thatch\",\n          \"role\": \"Seller\"\n        }\n      ],\n      \"accounts\": [\n        {\n          \"id\": \"b041e760-5dbe-4782-8368-c5509fba8d7b\",\n          \"name\": \"Tradeshift\",\n          \"role\": \"Prospect\"\n        }\n      ]\n    }\n  }\n]\n```\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        448
+      ],
+      "id": "8d34dae0-1385-4401-80e1-5f8de66717ef",
+      "name": "Process speakers",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "meeting_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        160,
+        592
+      ],
+      "id": "1019d7e9-2194-45fc-bab4-1b43ae061b6f",
+      "name": "Meeting id"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 1: Prepare raw data\nconst participantsRaw = $input.first().json.raw_data.participants;\n\nconst allEmails = participantsRaw\n  .flatMap(s => s.split(\",\"))\n  .map(e => e.trim())\n  .filter(Boolean);\n\nconst speakers = Array.from(new Set(allEmails));\n\n// Split into Thatch and Non-Thatch emails\nconst users = speakers\n  .filter(e => e.endsWith('@thatch.ai'))\n  .sort()\n  .map(email => ({ email }));\n\nconst contacts = speakers\n  .filter(e => !e.endsWith('@thatch.ai'))\n  .sort()\n  .map(email => ({ email }));\n\n// Export in n8n's expected format\nreturn {\n  json: {\n    users,\n    contacts,\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        448
+      ],
+      "id": "719ea8bf-bc0b-49e3-85fd-9d74ec80982f",
+      "name": "Prepare participants"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "pAAy05a3QA51pckv",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ☁️ CRM Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "is_sales": "={{ $json.is_sales || null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "is_sales",
+              "displayName": "is_sales",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        864
+      ],
+      "id": "108544d1-803b-47d6-b4da-bba6b10a4af9",
+      "name": "Add contact",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "EoF493NLOQHwy8Aa",
+          "mode": "list",
+          "cachedResultName": "Growth Projects — ⚙️ Team Manager"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "email": "={{ $json.email }}",
+            "is_sales": "={{ $json.is_sales || null }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "is_sales",
+              "displayName": "is_sales",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        304
+      ],
+      "id": "fda22034-cd73-4841-9a42-d679c7d52e86",
+      "name": "Add team member",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "contacts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        720
+      ],
+      "id": "7a5f560f-a31b-4d0c-995f-179871cd29b5",
+      "name": "Split contacts"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1568,
+        720
+      ],
+      "id": "1e16e2e0-f065-41f1-9871-e81c78d05fcb",
+      "name": "Loop contacts"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "users",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        160
+      ],
+      "id": "3b57c105-f732-413e-a538-36e554a008db",
+      "name": "Split team"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1568,
+        160
+      ],
+      "id": "ba931d69-a6ca-4ef1-9ae5-3d0005fd274d",
+      "name": "Loop team"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $now.format('yyyy-MM-dd') }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        2688,
+        752
+      ],
+      "id": "1d05b90e-0d47-4559-ade6-860c652dfdce",
+      "name": "Daily memory"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Run Once for All Items\nconst user = $input.item.json;\nreturn {\n  first_name: user.user?.first_name || null,\n  last_name: user.user?.last_name || null,\n  email: user.user?.email || null,\n  title: user.user?.title  || null,\n  organization: user.user?.organization  || null,\n  role: user.user.is_sales ? 'Sales' : 'Team'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        32
+      ],
+      "id": "0be5d7b2-177d-4a8e-a07e-5c6954b87913",
+      "name": "Edit users"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Run Once for All Items\nconst contact = $input.item.json;\nreturn {\n  first_name: contact.contact?.first_name || null,\n  last_name: contact.contact?.last_name || null,\n  email:  contact.contact?.email || null,\n  title:  contact.contact?.title || null,\n  organization: contact.contact?.organization || null,\n  role: contact.contact?.role || 'Prospect',\n  account_id: contact.contact?.account_id || null\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        608
+      ],
+      "id": "8edee4a0-0c7c-4698-80a8-14d380b759d9",
+      "name": "Edit contacts"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2128,
+        448
+      ],
+      "id": "744412b1-655a-4593-9ae6-1952d5fa5734",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "participants",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        448
+      ],
+      "id": "cd271ab6-c24e-4042-be22-9a15e7351265",
+      "name": "Aggregate participants"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"Enriched Meeting Speakers and Accounts\",\n  \"description\": \"An array of speaker objects containing meeting participant details, including personal information, professional role, and organization, and an array of related accounts in the meeting.\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"speakers\": {\n      \"type\": \"array\",\n      \"description\": \"A list of individuals who spoke in the meeting, with enriched profile information.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"id\": {\n            \"type\": \"integer\",\n            \"description\": \"A unique identifier for the speaker within the meeting context.\"\n          },\n          \"first_name\": {\n            \"type\": \"string\",\n            \"description\": \"The speaker's given (first) name.\"\n          },\n          \"last_name\": {\n            \"type\": \"string\",\n            \"description\": \"The speaker's family (last) name.\"\n          },\n          \"title\": {\n            \"type\": [\"string\", \"null\"],\n            \"description\": \"The speaker's professional job title at the time of the meeting, or null if unknown.\"\n          },\n          \"email\": {\n            \"type\": \"string\",\n            \"format\": \"email\",\n            \"description\": \"The speaker's professional email address.\"\n          },\n          \"organization\": {\n            \"type\": [\"string\", \"null\"],\n            \"description\": \"The name of the employer or organization the speaker represents.\"\n          },\n          \"role\": {\n            \"type\": \"string\",\n            \"enum\": [\"Employer\", \"Broker\", \"Prospect\", \"Seller\", \"Team\"],\n            \"description\": \"The role of the speaker in the context of the meeting, from participant details. Do not change.\"\n          }\n        },\n        \"required\": [\"id\", \"first_name\", \"last_name\", \"email\", \"organization\", \"role\"],\n        \"additionalProperties\": false\n      }\n    },\n    \"accounts\": {\n      \"type\": \"array\",\n      \"description\": \"A list of distinct organizations (accounts) related to the meeting and their associated role.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"id\": {\n            \"type\": [\"integer\", \"string\"],\n            \"description\": \"A unique identifier for the account. Can be numeric or string depending on system.\"\n          },\n          \"name\": {\n            \"type\": \"string\",\n            \"description\": \"The name of the organization or account.\"\n          },\n          \"role\": {\n            \"type\": \"string\",\n            \"enum\": [\"Employer\", \"Broker\", \"Prospect\"],\n            \"description\": \"The organization's role in the meeting context. Must match one of the allowed speaker roles.\"\n          }\n        },\n        \"required\": [\"id\", \"name\", \"role\"],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"speakers\", \"accounts\"],\n  \"additionalProperties\": false\n}\n",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        2800,
+        608
+      ],
+      "id": "6fb92d6b-56da-4024-9d5d-04fac2ab6202",
+      "name": "Speaker JSON"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Fetch inputs safely with enhanced error handling\nconst rawTranscriptItem = $('Get meeting from DB').first();\nif (!rawTranscriptItem) {\n  throw new Error('Get meeting from DB node returned no items');\n}\nconst raw = rawTranscriptItem.json || {};\n\nconst speakersNode = $('Process speakers').first();\nif (!speakersNode) {\n  throw new Error('Process speakers node returned no items');\n}\nconst out = speakersNode.json?.output || {};\nconst speakers = Array.isArray(out.speakers) ? out.speakers : [];\nconst accounts = Array.isArray(out.accounts) ? out.accounts : [];\n\nfunction toHHMMSS(timeInSeconds) {\n  if (typeof timeInSeconds !== 'number' || isNaN(timeInSeconds)) return '00:00:00';\n  \n  const total = Math.max(0, Math.floor(timeInSeconds));\n  const h = Math.floor(total / 3600).toString().padStart(2, '0');\n  const m = Math.floor((total % 3600) / 60).toString().padStart(2, '0');\n  const s = (total % 60).toString().padStart(2, '0');\n  \n  return `${h}:${m}:${s}`;\n}\n\n// Helper: safely round numbers\nfunction safeRound(value, decimals = 2) {\n  if (typeof value !== 'number' || isNaN(value)) return null;\n  return Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);\n}\n\n// 1. Deduplicate speakers by email (keep first, skip invalid)\nconst emailToId = {};\nconst dedupedSpeakers = [];\nspeakers.forEach(s => {\n  // Enhanced safety check for speaker object\n  if (!s || typeof s !== 'object') return;\n  \n  const rawEmail = s.email;\n  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : null;\n  if (!email) return;\n  \n  if (!(email in emailToId)) {\n    emailToId[email] = s.id;\n    dedupedSpeakers.push(s);\n  }\n});\n\n// 2. Build id remap for duplicates\nconst idRemap = {};\nspeakers.forEach(s => {\n  if (!s || typeof s !== 'object') return;\n  \n  const email = typeof s.email === 'string' ? s.email.trim().toLowerCase() : null;\n  if (email && s.id !== emailToId[email]) {\n    idRemap[s.id] = emailToId[email];\n  }\n});\n\n// 3. Remap speaker_ids on raw sentences\nconst rawSentences = Array.isArray(raw.raw_data?.sentences)\n  ? raw.raw_data.sentences\n  : [];\nconst remappedSentences = rawSentences.map(s => {\n  if (!s || typeof s !== 'object') return s;\n  \n  const origId = typeof s.speaker_id === 'number' ? s.speaker_id : null;\n  const newId = origId !== null && origId in idRemap ? idRemap[origId] : origId;\n  return { ...s, speaker_id: newId };\n});\n\n// 4. Build segments by merging consecutive sentences\nconst segments = [];\nfor (const sentence of remappedSentences) {\n  if (!sentence || typeof sentence !== 'object') continue;\n  \n  const text = sentence.ai_filters?.text_cleanup || '';\n  const start = toHHMMSS(sentence.start_time);\n  \n  if (!segments.length || segments[segments.length - 1].speaker_id !== sentence.speaker_id) {\n    segments.push({ speaker_id: sentence.speaker_id, start_time: start, text });\n  } else {\n    segments[segments.length - 1].text += text ? ' ' + text : '';\n  }\n}\n\n// 5. Assemble final transcript object with full defensive access\nconst transcript = {\n  id: raw.id || null,\n  original_transcript_id: raw.id || null,\n  title: raw.title || null,\n  date: raw.date || null,\n  duration: safeRound(raw.raw_data.duration), // Fixed: safe duration handling\n  speakers: dedupedSpeakers,\n  accounts: accounts,\n  sentiments: raw.raw_data?.analytics?.sentiments || [],\n  analytics: raw.raw_data?.analytics?.speakers || [],\n  summaries: {\n    fireflies_gist: raw.raw_data?.summary?.gist || null,\n    fireflies_short: raw.raw_data?.summary?.short_summary || null,\n    fireflies_overview: raw.raw_data?.summary?.overview || null,\n    fireflies_bulleted: raw.raw_data?.summary?.shorthand_bullet || null\n  },\n  segments,\n};\n\n// **Return in proper n8n format**\nreturn { transcript };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3248,
+        448
+      ],
+      "id": "1e4743da-2f88-4776-b860-3ccff9feddd0",
+      "name": "Process transcript"
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_processed",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.transcript.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.transcript.date }}"
+            },
+            {
+              "fieldId": "speakers",
+              "fieldValue": "={{ $json.transcript.speakers }}"
+            },
+            {
+              "fieldId": "accounts",
+              "fieldValue": "={{ $json.transcript.accounts }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "={{ $json.transcript.sentiments }}"
+            },
+            {
+              "fieldId": "analytics",
+              "fieldValue": "={{ $json.transcript.analytics }}"
+            },
+            {
+              "fieldId": "original_transcript_id",
+              "fieldValue": "={{ $json.transcript.original_transcript_id }}"
+            },
+            {
+              "fieldId": "summaries",
+              "fieldValue": "={{ $json.transcript.summaries }}"
+            },
+            {
+              "fieldId": "duration",
+              "fieldValue": "={{ $json.transcript.duration }}"
+            },
+            {
+              "fieldId": "segments",
+              "fieldValue": "={{ $json.transcript.segments }}"
+            },
+            {
+              "fieldId": "is_summarized",
+              "fieldValue": "={{ null }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3520,
+        448
+      ],
+      "id": "60e25b86-8a83-472c-9187-096dc326b785",
+      "name": "Save to Supabase",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const transcriptItem = $('Save to Supabase').item.json;\n\nif (!transcriptItem) {\n  return {\n    transcript: {\n      id: null,\n      original_transcript_id: null,\n      title: null,\n      operation: 'error'\n    }\n  };\n} \n\n// Check if transcript.json has a nested transcript object\nconst data = transcriptItem.transcript \n  ? transcriptItem.transcript  // Use nested transcript object\n  : transcriptItem;            // Use the json object directly\n\nreturn {\n  transcript: {\n    id: data.id || null,\n    original_transcript_id: data.original_transcript_id || null,\n    title: data.title || null,\n    operation: transcriptItem.error?.slice(0,9) === 'duplicate' \n      ? 'duplicate' \n      : (transcriptItem.error ? transcriptItem.error : 'success')\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        448
+      ],
+      "id": "04c82f4a-d1f5-41e4-8cb0-11d138fdb13b",
+      "name": "Output"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_fireflies",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.original_transcript_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "is_processed",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "is_valid",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        304
+      ],
+      "id": "fe4df15c-0a48-456c-90f4-7e6f0befd874",
+      "name": "Mark transcript as processed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Process Speakers & Participants",
+        "height": 1000,
+        "width": 2420,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        688,
+        0
+      ],
+      "id": "0b76a778-3d0e-4795-b509-a17acf0c45c9",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Process and Save Transcript",
+        "height": 1000,
+        "width": 1020,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3200,
+        0
+      ],
+      "id": "2786ea3c-ca5f-4a59-8159-be5805b5a3b1",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  transcript: {\n    id: $('Meeting id').first()?.json?.meeting_id || null,\n    operation: 'invalid'\n  }\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        720
+      ],
+      "id": "1ea37bc8-b5c0-4275-9146-02dd796fb915",
+      "name": "Output invalid"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b400e9a1-7107-4f36-99ce-28c616cfa436",
+              "leftValue": "={{ $json }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "399198aa-e519-4393-9def-8939b996f1ad",
+              "leftValue": "={{ $json.raw_data.speakers }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            },
+            {
+              "id": "da3e0fef-67b5-45f2-97f8-18de30973fb9",
+              "leftValue": "={{ $json.raw_data.duration }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            },
+            {
+              "id": "75e5059e-04d9-4012-9497-d4fb2d0275d5",
+              "leftValue": "={{ $json.raw_data.participants }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "array",
+                "operation": "lengthGt",
+                "rightType": "number"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        592
+      ],
+      "id": "126a8928-cddf-439f-a23b-e00bc086373a",
+      "name": "Is valid?"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_fireflies",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json?.id || null }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "is_processed",
+              "fieldValue": "true"
+            },
+            {
+              "fieldId": "is_valid",
+              "fieldValue": "false"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3808,
+        720
+      ],
+      "id": "8b670539-1f16-4903-8773-aec35bddd8ee",
+      "name": "Mark transcript as invalid",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "FCsEY0pILVbfm9UX",
+          "name": "Supabase (Thatch)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {
+    "Meeting id": [
+      {
+        "json": {
+          "meeting_id": "3d82644a-ec56-4245-a695-b2bf906cafb6"
+        }
+      }
+    ],
+    "Process transcript": [
+      {
+        "json": {
+          "transcript": {
+            "id": "3d82644a-ec56-4245-a695-b2bf906cafb6",
+            "original_transcript_id": "3d82644a-ec56-4245-a695-b2bf906cafb6",
+            "title": "Thatch / KKA Demo",
+            "date": "2025-07-18T15:00:00+00:00",
+            "duration": 28.12,
+            "speakers": [
+              {
+                "id": 0,
+                "first_name": "Kara",
+                "last_name": "Kubarych",
+                "title": "Customer Success Lead",
+                "email": "kara.kubarych@thatch.ai",
+                "organization": "Thatch",
+                "role": "Team"
+              },
+              {
+                "id": 1,
+                "first_name": "Gary",
+                "last_name": "Daniels",
+                "title": "Chief Growth Officer",
+                "email": "gary.daniels@thatch.ai",
+                "organization": "Thatch",
+                "role": "Team"
+              },
+              {
+                "id": 2,
+                "first_name": "Keith",
+                "last_name": "Epperson",
+                "title": "Senior Healthcare Consultant",
+                "email": "keith@kkadvisory.org",
+                "organization": "KK Advisory Services",
+                "role": "Prospect"
+              },
+              {
+                "id": 4,
+                "first_name": "Justin",
+                "last_name": "Longua",
+                "title": "Consultant",
+                "email": "justin@kkadvisory.org",
+                "organization": "KK Advisory Services",
+                "role": "Prospect"
+              }
+            ],
+            "accounts": [
+              {
+                "id": "f1ebdd8a-ade3-4da1-9b06-6e925b2282b8",
+                "name": "KK Advisory Services",
+                "role": "Prospect"
+              },
+              {
+                "id": "ad0779bb-2d5f-4b25-9278-57713538ad51",
+                "name": "KK Advisory Services",
+                "role": "Prospect"
+              },
+              {
+                "id": "99326412-268f-41fd-be31-39e7ccb63a52",
+                "name": "KK Advisory Services",
+                "role": "Prospect"
+              }
+            ],
+            "sentiments": {
+              "neutral_pct": 48,
+              "negative_pct": 5,
+              "positive_pct": 46
+            },
+            "analytics": [
+              {
+                "name": "Kara Kubarych",
+                "duration": 3.5283500000000005,
+                "questions": 3,
+                "speaker_id": 0,
+                "word_count": 759,
+                "duration_pct": 14.16837328835883,
+                "filler_words": 7,
+                "monologues_count": 0,
+                "words_per_minute": 215,
+                "longest_monologue": 64.60999999999996
+              },
+              {
+                "name": "Gary Daniels",
+                "duration": 18.95181666666666,
+                "questions": 10,
+                "speaker_id": 1,
+                "word_count": 3638,
+                "duration_pct": 76.1025445394798,
+                "filler_words": 23,
+                "monologues_count": 5,
+                "words_per_minute": 192,
+                "longest_monologue": 199.58999999999992
+              },
+              {
+                "name": "Keith E",
+                "duration": 1.8348333333333429,
+                "questions": 3,
+                "speaker_id": 2,
+                "word_count": 343,
+                "duration_pct": 7.367920866294591,
+                "filler_words": 1,
+                "monologues_count": 0,
+                "words_per_minute": 187,
+                "longest_monologue": 45.400000000000006
+              },
+              {
+                "name": "Justin Longua",
+                "duration": 0.5880000000000027,
+                "questions": 1,
+                "speaker_id": 4,
+                "word_count": 125,
+                "duration_pct": 2.361161305866773,
+                "filler_words": 0,
+                "monologues_count": 0,
+                "words_per_minute": 213,
+                "longest_monologue": 22.480000000000018
+              }
+            ],
+            "summaries": {
+              "fireflies_gist": "The meeting aimed to discuss innovation in healthcare solutions, focusing on growth strategies and market readiness for 2026.",
+              "fireflies_short": "Keith E emphasized the urgent need for innovation in healthcare transactional solutions, given the rising complexities in the sector. Thatch is mobilizing a skilled team of 110 data scientists and fintech engineers to drive transformative changes. Their quote platform is capable of real-time calculations and supports 11 ICHRA classes, allowing for demographic-based contribution adjustments. A strategic growth plan aims to expand the customer base to mid-market businesses (100-1,000 employees) by 2026, necessitating partnerships for accurate rate predictions by September-October. There's a notable interest from carriers in ICHRA due to competitive pressures related to MLR requirements. Major carriers like Anthem Blue Shield California and Kaiser are prioritized for strategic analysis, with rate updates expected bi-weekly and clearer insights by mid-to-late August. Legislative impacts from recent bills may be causing delays, emphasizing the need for a collaborative approach in updating market expectations.",
+              "fireflies_overview": "- Keith E, with 40+ years as a healthcare actuary, emphasizes the critical need for innovation in healthcare transactional solutions amidst rising complexities.  \n- Thatch is leveraging a 110-person team of data science and fintech engineers to drive change within the healthcare sector.  \n- The quote platform showcases real-time calculations and supports 11 ICHRA classes, highlighting capabilities to adjust contributions based on demographics.  \n- Current focus is on expanding the customer base from SMBs to mid-market businesses (100-1,000 employees) as a growth strategy for 2026.  \n- Partners are needed for accurate 2026 individual rate predictions by September-October, signaling urgency in market readiness.  \n- Market feedback indicates carriers are increasingly interested in ICHRA due to competitive pressures related to MLR requirements.  \n- Immediate priority involves obtaining a state list prioritizing major carriers, specifically Anthem Blue Shield California and Kaiser, for strategic analysis.  \n- Rate updates will follow a bi-weekly cadence, with clearer insights anticipated by mid-to-late August.  \n- Ongoing delays may stem from legislative impacts from the 'big beautiful bill' and resulting carrier filing caveats.  \n- A collaborative approach in updating market expectations and timelines is essential for planning upcoming product developments.  ",
+              "fireflies_bulleted": "👥 **Introductions and Background** (02:09 - 06:40)\nKeith E introduced himself as a healthcare actuary with 40+ years of experience, including roles at United Healthcare, Bright Health as Chief Actuary, and various other healthcare organizations.\nKara Kubarych introduced herself as Head of Customer Success at Thatch, recently joined from health tech startups, focusing on renewals and open enrollment planning.\nGary Daniels shared his background including 15 years at United Healthcare as Plan CEO and Growth Officer, establishing connection with Keith through mutual contact Catherine Sullivan.\n💻 **Thatch Platform Overview** (06:40 - 09:45)\nThatch is positioned as a fintech company solving healthcare transactional problems with a 110-person team primarily composed of data science and fintech engineers.\nPlatform serves as more than just a quote tool - potentially open-sourceable solution that could change healthcare dynamics.\nCurrent challenge: Massive delays in filings for larger employers, with need to make assumptions about 2027 individual rates based on BCRs and historical norms.\n📊 **Demo of Quote Platform** (09:55 - 17:29)\nQuote tool demonstration showed capabilities for real-time contribution adjustments and rate calculations for ICHRA (Individual Coverage Health Reimbursement Arrangement) plans.\nPlatform loads every individual rate product filed nationally by AV (Actuarial Value) and allows real-time pricing adjustments.\nTwo contribution methods: Traditional flat dollar budget vs. Thatch's unique purchasing power-based contributions that account for age and geographic rating differences.\nSystem supports 11 different ICHRA classes including management/non-management, state-based contributions, and executive pinning capabilities.\n📈 **Business Strategy and Market Positioning** (11:25 - 22:36)\nCustomer base: Primarily SMB segment (under 100 employees) with focus expanding to mid-market (100-1,000 employees) for 2026 cycle.\nImmediate needs: Partnership for 2026 individual rate predictions and small business comparisons by September-October timeframe.\nMarket opportunity: Carriers showing significant interest in ICHRA due to margin pressures and need for 80% MLR business compared to eroding level-funded margins.\n🔍 **Rate Analysis Requirements** (19:21 - 24:45)\nShort-term priority: Guidance on 2026 individual rate increases by market and comparison to small group rates for early customer decision-making.\nState prioritization: Need for prioritized state list with specific focus on major carriers like Anthem Blue Shield California and Kaiser.\nLong-term strategy: Building calendar around rate expectations and preliminary rate timing for 2027 large group expansion.\n🗓️ **Project Scope and Next Steps** (23:22 - 26:16)\nBi-weekly refresh cadence discussed for rate updates as data becomes available.\nTimeline expectations: Bulk of rates expected to be clearer by mid-to-late August, with some continuing into September.\nComplications noted: Potential delays due to 'big beautiful bill' legislation and carriers filing caveats based on bill passage.\n"
+            },
+            "segments": [
+              {
+                "speaker_id": 0,
+                "start_time": "00:00:01",
+                "text": "Been a good week. It's good this meeting is being recorded exactly."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:00:05",
+                "text": "Sure why the zoom wasn't attached, but."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:00:08",
+                "text": "I feel like it's got a mind of its own sometimes like it defaults and sometimes it doesn't."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:00:13",
+                "text": "All good."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:00:24",
+                "text": "Can you hear us? I don't know, maybe. Hey, Justin."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:00:55",
+                "text": "I'm testing. Can you guys hear me? Thumbs up. I can't hear anything."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:00:57",
+                "text": "Oh, now we can we. I don't think you can hear us."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:00",
+                "text": "Before log back in."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:01:04",
+                "text": "Yeah, all good."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:07",
+                "text": "How about now?"
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:01:09",
+                "text": "So you can hear me."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:10",
+                "text": "I can't hear you. Right."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:01:11",
+                "text": "Oh yeah, we can hear you."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:13",
+                "text": "We can."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:01:14",
+                "text": "There you go."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:14",
+                "text": "Now I got sound."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:01:15",
+                "text": "All right."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:01:18",
+                "text": "Thank you."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:01:22",
+                "text": "Here today. Give everyone another minute here. My apologies. I'm not sure why it wasn't attached. But."
+              },
+              {
+                "speaker_id": 4,
+                "start_time": "00:01:38",
+                "text": "It'Ll just be keeping myself today from our end."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:01:42",
+                "text": "Okay, perfect."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:01:45",
+                "text": "Probably. Oh yeah, I do think Dan's joining. Yeah, I think we have one other person on our side, but Gary, you're probably fine to jump in."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:01:52",
+                "text": "Okay. Yeah, I'm just trying to get the demo up and rolling here real quick because I was didn't know the zoom wasn't attached. So let me get this going."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:02:02",
+                "text": "Perfect. Keith, I don't think we met you earlier this week. Do you want to do a brief introduction?"
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:02:09",
+                "text": "Yeah, very brief. I'm basically been a healthcare actuary for 40 plus years working really, you know, individual. Started in an individual market and then went to United, did small group, large group, ASO and then ultimately ended up after a couple other stops, chief actuary roles at Bright Health. So was chief actuary there over their Medicare and all their commercial business as well as provider contracting, the reserving all the standard actuarial stuff. So I've really seen a little bit of everything over the years and that's where I think Justin was the second person I hired and really have enjoyed working with him ever since. So that's how we got connected."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:02:56",
+                "text": "Full circle. Oh, that's fantastic. Well, it sounds like you have incredible background and experience in this world. That super quick intro on my side and then I'll pass to Gary and he can start the demo. I'm Kyra Kubarich, I'm our head of customer success here at Thatch. I joined pretty recently, so very excited to be here and to be digging into this topic. It's a very important one as we look ahead to renewals and open enrollment planning. My background is in the health tech world, so I've just been two startups before this, both growth stage and you know, a lot of similar kind of Building of the team and the process and the foundation. So thrilled to be here. It's a very exciting time at Thatch and in the Ichra market more broadly. And yeah, we're hiring, we're growing. So, Justin, I may ping you if you have any good referrals in your network for CS folks. But yeah, it's great to meet you and we're hoping that we'll be able to work together on this engagement. The SOW or the kind of like high level overview you sent over. Justin, I think looked really good, more or less kind of hit on the key pieces we were looking for, but maybe we circle back on that at the end as well."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:04:05",
+                "text": "Yeah. Nice to meet you, Cara."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:04:06",
+                "text": "Yeah, there's definitely a few things I want to talk about. And I think, you know, part of what I wanted to do with this demo too, Justin, is to give you guys. I know, Keith. We could probably share a lot of war stories. I spent 15 years at United, was the most recently held plan CEO out here. I was in a growth officer for years reporting update Katherine Sullivan and then Bill."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:04:27",
+                "text": "I know Kathy."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:04:28",
+                "text": "Yeah, yeah, she was one of my favorite leaders on the planet. Just a quick Kathy story. Apologies. But if you know Cat, if you know Kathy, you gotta. You'd know this. So she's a die hard LSU fan, Kara, like die hard, die hard LSU fan goes to all the games and, and which is a big track for her to make it all the way out to Oregon. And she committed to doing it. And I said, hey, what would it take for you to put on a Oregon Duck jersey for me? And she goes, gary, I think very highly of you, but there is nothing on the planet that would get you to have me put on an Oregon ductor. And she always, she was very professional, but she hair, makeup, business, suit, like she's, she was a real deal in terms of female executive. And she's like, and you're not going to mess up this hair."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:05:17",
+                "text": "It's like, all right, amazing."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:05:19",
+                "text": "She comes out to do this meeting and Nike, through their relationship with ohsu, would do this thing called stomp out cancer. And basically what they do is let kids at the Phil Knight Cancer Institute for Kids essentially design shoes and jerseys, buy these kids. And then Nike would sell them for fundraising. And all the money went to the Children's Cancer Institute. And huge deal, national in scope. They do it every year. And so we had this girl, Nike is a customer of uhc, longtime customer. This little girl designed a Oregon Duck jersey. And I had Sullivan put on the back of it. Nike. I know everyone. I know Ellie, I know the CEO with her now. And so put Sullivan on the back of it. She shows up and I pull out the jersey and she kind of laughs. She's like, I'm not putting it on. And we played the video of the girl that built the jersey, the whole nine yards, put her name on it back, and she was like. And you also have to know, like, she was also pissed at me because she just melted at her makeup. But she put the jersey on. It was a really cool moment. But, oh, her retirement party. Retirement party in D.C. and she was like, you were like the only one that ever got me. So a lot of fun."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:06:39",
+                "text": "That's awesome."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:06:40",
+                "text": "Yeah. All right, so let's just jump into this. I apologize, but I thought that'd be funny since you know Catherine pretty well. So, Keith, you've seen a lot of stuff. I tell people what we build at Thatch is one example. Optum at one point had considered using our back room and it's still been kind of a part of a national discussion by background at Thatch. They are a fintech company and the real problems around healthcare are all transactional problems. When you think about the rates that are developed, how we pay, do billing reconciliation, how we make this individual process work on a national basis, it is all solved by transactions. And so our backbone and the majority of our 110 person team at Thatch is made up of data science and fintech engineers. And so kind of as you go through and what we'll show you is a version of our quote platform. And it's not just a quote platform. It will be what I think is what changes the dynamics in healthcare because there will be a world where we might open source this in the future. And I think as you see it and kind of understand why and how easy and intuitive is, it will make a lot of sense. Our challenge right now is when we work, especially with larger employers, there is a massive delay in terms of like when filings happen, which is happening like right now, all the filings are in. We see supplementary rates depending on the states that are more transparent. But to really attack the large group space, we need to make assumptions, not this cycle, but more going into next cycle about what we think individual rates are going to look like for 2027. And I'll be looking at taking BCRs, backing out, looking historical norms, you name it. From an individual perspective, the shorter term need for us is kind of twofold. One is we have some large customers that are wanting to make earlier decision, decision. So like that September time frame around their contribution, the way they set their contributions for 2026 and we won't get the individual rates until like November. Right. Because that's when Ideon releases them. So outside of Ambetter Kaiser, Ambetter Kaiser Shield Care first, there's a handful across the country that as soon as their rates are final they will start feeding them to us. So we'll probably know like September ish. But everything else we have a little bit of a gap and so we want to be able to use this tool that I'm going to show you in a second one is it's a new business quote tool but what we will be thinking about how to use this in the future is how Kara and her team can sit in front of a customer and make changes in real time to contributions and see how that will translate to expected rates for the group's renewal in advance of us actually know what pricing looks like. So. So let me just show this to you because that's a lot of words and I think contextually you'll get it a lot more effectively when you see what this looks like."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:09:53",
+                "text": "So yeah. Thanks Gary."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:09:55",
+                "text": "Yep. Share. All right. Can you see my little demo screen here?"
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:10:03",
+                "text": "Yep, yep."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:10:04",
+                "text": "All right, so I'll just really quick just type a few things in where The Justin Group 210 employees don't need to go through all the rest of this stuff. Upload a census is grab. What was the last one I did here? Where did my Northwest one go?"
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:10:29",
+                "text": "Looking at these are employer employers buying ICHRA plans?"
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:10:32",
+                "text": "Yeah, correct. I just used the Northwest census. Why is it not showing up now? Of course just one second here."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:10:44",
+                "text": "And just on that Keith, in terms of the book of business, so you know most Ichra early Ichra adopters have been relatively small to very small companies. So a lot of our customers today are in the kind of SMB segment, you know, call it under 100 employee lives we do have. And where most of my focus has been is on the mid market segment segment which is call it like 100 to a thousand. And that's a lot of where we're, we're driving growth for this next, you know, 20, 26 cycle. So that and, and those are the customers too that are going to be more concerned about their allowance structure and contribution. We say allowance, you know and where we want to be more consultative."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:11:25",
+                "text": "So today on the front end. So this is a very generic way to type in benefit design. You'll see in a second what we actually load in Through CMS is every single individual rate product that's filed nationally by AV Value. What this will eventually change to, this ingestion, which we're not quite ready for prime time, is that we will be using an AI tool to ingest SBC and SPD type data so that we can make especially for a large group, because getting an AV for a large group is a little bit rough because obviously they're not filed. However, we're going to use a tool set that will allow us to calculate kind of rough AV calculations so that we can do a better comparison. Just so you understand that it's going to be a work in progress. The other thing that's very unique to Thatch is that there's two ways to do defined contribution way. Number one, which is where most of our competitors do, which is this flat dollar budget, everyone gets 1,000 bucks. That creates a lot of inequity in purchasing. And it makes it really hard for sophisticated large groups that have, you know, if you have a 55 or 60 year old executive, because this is age rated and it's geographic age rated, their premiums could be through the roof versus a 26 year old that sits in the same market that's brand new employee. And so what we have the ability to do is base our contributions based on purchasing power. So say the employer comes to us and says I want all of my employees to be able to purchase a thousand dollar plan. We actually can tilt based on rates and cost the contributions for employees. So that 26 year old has the same purchasing power as the 55 year old. And so the 26 year old might get 500 bucks and the 55 year old might get 1500 bucks. And so we created again because of our fintech background across purchasing bands and that one to three band that exists specifically for Ichra contributions and so very unique to us and it creates a lot of nimbleness for the way our products exist."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:13:37",
+                "text": "I guess the timing is appropriate too given all the stuff in the media now about employers dumping even more of the premium costs onto their employees."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:13:45",
+                "text": "Correct. So this is just a quick view. So just let me orientate you to this really really briefly so you can see total premium. So when we uploaded the census, we look at total cost based by employer contribution and employee contribution. So that's, it's one of the things we asked for on the census. So that loads automatically. So if you can see on the right hand side you can see kind of total cost, employer contribution, employee contribution, and then on the left hand side you can see that when I typed in in the beginning, that $2,000 deductible, 6,000 out of pocket max, what that tells us is that's 100 percentile of a silver benchmark plan. And we can change that to, you know, 75th. That changes the total premium. But let's just go Back to the 100 here for a second. What our assumption also did, is it because I was doing a really rich customer, it loaded the same assumption around employee dependent coverage. This is incredibly rich. And so when I reduce this dependent coverage, if you pay attention to the right hand side here, as I take these dials down and back and forth, literally in real time, we can consult our customers and customers can make quote and purchasing decisions just by how they play with their contributions literally in real time. And so what the backbone of this is, if you get down to the census, we load every single individual plan design that these individuals have, ability to purchase and price them essentially in real time. So you can see for this member, these are all the individual plans that they had access to. You can see in this scenario that if they went with the shield plan, they would have an additional $39 a month to spend on whatever they want in terms of their healthcare experience. If they went with the Kaiser plan, they'd have 258 bucks a part of this process. That's really important for the member. We also load in provider directories so they can see in real time like is my doctor even in network? It's a part of the overall purchasing decision. We make it very intuitive for them at the end of the day and you can see some breakouts here. The other really important thing for us is that you can do 11 different classes for Ichra. So we can do management, non management. We can do contributions based on state. So if there's a certain state that, for example, we know California is a lot more expensive, we can actually tweak the contributions specific to California a lot lower than we might do for Texas because Texas has a lower overall total health care cost and lower health care premiums. We can also pin executives. So for example, we could say this person's important, this person's important, this person's important. And then you can go in and see what's happening within their plan designs. So this tool is going to continue to change dynamically quite a bit for us. We actually, and I can email you guys if you want to see. We can say. Share quote the the employer gets a live view of this in real time. Right now we don't Allow them to play with the contribution changes. But the reality is we firmly believe the first Ichra company and it'll be us eventually that figures out how to kind of open source this tool set. Whoops, Let me get out of here. Will kind of win the overall ICRA game. Me grab. How do they click out of there?"
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:17:29",
+                "text": "Good. Maybe like gone to another screen."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:17:32",
+                "text": "Yeah, I don't know how I did that again. All right, can you say see the map again?"
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:17:37",
+                "text": "It's loading."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:17:38",
+                "text": "Not yet."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:17:40",
+                "text": "Oh, it says double click to enter full screen mode."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:17:43",
+                "text": "Yeah, something's really wrong with zoom today. All right, so I'll just pause. I think that gives you guys like a view of what the quote tool looks like. And so a couple back to Justin. The way I'm going to respond to what you guys sent over. So short term for us is going to be, you know, we need some partnership around what we think the 2026 rates are going to look like for, for individual by itself in terms of like individual changes year over year by market and then what we think the comparison is going to be to group. So if you look at like transparently at New York, New York has a 24% increase on average for group individuals 13. You know, similarly there's pockets in, you know, Oregon is one example where Providence is raising. They're the dominant small business carrier in the state. They're raising their premiums in small business by 24%. Individual, they're raising by 9. Even though small business is going to be still cheaper in Oregon, specific to the number one carrier are now going to be a low group. And so having like some context around one, again, how much we think rates are going to increase. And then two comparisons to small business early in the cycle. I'm talking like September, October is going to be important to us, even if they're not what I'd say, like extremely specific because obviously we know that there's plan design changes, we know that there's network changes, we know there's all kinds of things that influence price. But what I really want to do is two things. One is to make sure Kara and her team, she can start to provide guidance to her customers as early as we can about how much we think rates are going to go up so these employers can change their contributions, number one. Number one, to be able to steer our sales ship so our small business teams, our sales teams into markets where we think we have the best opportunity to grow ichra for the 26th cycle."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:19:49",
+                "text": "So, and just so Justin, stop me if you know this Already. But what scary is talking through when you say comparison to group, you're talking small group, ACA rates or any insight in large group movement."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:20:02",
+                "text": "We, I think large group will definitely be on the table for 2027. That becomes a completely different pricing exercise. You know as I was, Justin was talking about, you know, everyone prices to BCR and we got off the call and people like why would people price to bcr? Like they don't, I'm like because you don't know the game of the carrier space. Like everything gets price to loss ratio. There's assumptions around risk adjustment, the whole nine yards. Um, it's really not about anything other than margin at the end of the day. So. Okay. Yep."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:20:32",
+                "text": "Okay. Yeah. It sounds like your example certainly is calling out the impact of the level funding impact. You know small group rates are going up everywhere."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:20:42",
+                "text": "Right? Yeah."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:20:43",
+                "text": "There's gotta be an option alternative."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:20:45",
+                "text": "Yeah. And you know I tell people I'm getting ready to release. It's somewhat of an aggressive white paper around like how I think 27 and 28 is going to roll out. And part of it's around a couple things. One is carriers are super, super interested in ICRA like beyond like they're over the top. The amount of interest we have not for this cycle but for next cycle. And they see the same thing that I see and it's one, we see the pressure within these carriers around their financials. Everyone's getting crushed right now. They need to find ways to make margin in the future. And the way you can do that is by taking level funded business that's already seeing massive margin. I mean at United we were had great PMPMs in terms of profit margins. Those have eroded, even those have eroded drastically over the last few years. And the only way to kind of recoup is getting stuff back in at an 80% MLR or close to it which lives in the individual space. And so for a carrier to build a strategy where if you're a blue plan and you can attack the level funded business with better individual products at 80% MLR, even if you only get 70% of that group, that's a lot more profitable business than trying to build a late stage level funded product. Similarly with the captives, there's been so much carve out in like the mid market around these captives where now you have you know, 100 person group that's getting an ASO fee or a TPA fee, network access fee. That's not going to help these carriers. Right. Size their margin. And so they all see it as a way to win the day. It's just a matter of surviving 26 more so than anything else."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:22:36",
+                "text": "One other quick note I'll make and I think I wrote this in the doc too is that we know that certain states are going to file earlier, certain carriers. So I think having some way, Justin, and you mentioned the bi weekly refreshes which may be fine but but some way to see, okay, we have like 70% of plans in California or like I talked to one of our bigger customers yesterday who is really trying to make some adjustments to their contribution strategy and they said, you know, our predominant like you know, highest proportion of members are in Anthem, Blue Shield, California and Kaiser plans. Like can you tell me when that. When you have a sense of the rates for those ones. So figuring out right. How we can sort of like use this data as it comes in and, and sort of like what that looks like would be very helpful."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:23:22",
+                "text": "Yeah. Longer term we want to build a calendar around expectations, right. I think if whoever we work for with in terms of kind of this actuarial consultant role is that one we want to again be able to execute around sales and I would say rough support around our customer service because we know we just haven't built that tempo yet. But then as we roll into 27 we really want to build a tempo that allows us to sell upstream a lot more effectively. In large group we want to build a tempo around timing in terms of when we think we will have preliminary rates, making some assumptions really early around what we think 27 rates will look like based on BCR builds and stuff that you guys do on the actuarial side looking at risk adjustment, the whole nine yards and then three as we get closer to this time of year when these larger employers are making they're doing their renewal decision that we have a timeline that says hey, if you have a group in California, this is historically when they have announced their, their final rates. Hey, if you have a group in North Carolina, this is historically when they reduce their final rates so that we can counsel that to a customer kind of in real time. Like we will be transparent as soon as we know you will know. And I think that becomes a really good support mechanism for us on a customer service side."
+              },
+              {
+                "speaker_id": 4,
+                "start_time": "00:24:45",
+                "text": "Yeah, that makes a ton of sense to that point. Do you have like a state prioritization list? Obviously you're aware how ad hocus is. Like today Blue Cross of Texas somehow got reported that they're taking a 21 increase for 26. So there's these one off notes that are coming in. So if you have a prioritization list of states, that would be helpful for us. Yeah, but I just get an idea."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:25:08",
+                "text": "Yeah, for sure. I'll, I'll send that to you. What I've told Kara is we should probably by mid to late August have a much better idea of where these rates are going to be final at for the bulk of the country. You know, it's, some of it's still going to come in in September, but I think for the bulk, a lot of that noise will start to leak out into the market if they don't become final. Like, I don't even know the cutoff for like, I thought the cutoff for California was like mid August, but I could be misremembering that in terms of when they set their final rates. But we definitely could prioritize states for you. That would be great. And then if there's anything that you guys know about when rates get final, because I, I usually know it's all over the board. I know some states kind of have a hard and set rule, but because of all the, the changes specifically around the big beautiful bill and a lot of the carriers filed caveats around if the bill got passed or didn't get passed. Yeah, I'm just like, I'm a little concerned this year especially it's going to create more delay and I just don't have a good feeling for what that's going to look like."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:26:16",
+                "text": "Yeah, I mean, Justin, we can talk about that offline, but there's, you know, states are required two filings and there's states that have with and without reinsurance. So now you've got four filings. Potentially. We, you know, sort of sift through those and get you the right set of rate increases."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:26:33",
+                "text": "Okay. So yeah, we'll circ around with a couple priority states. I'll also add a couple additional notes. And then Justin, if there's anything that, based on what I shared, that changes your guys's perspective one around kind of timing. I think I commented in there that like the, the relationship starts a little bit later in terms of like and the priority list changes a little bit around like what we need. And so yes, you need to put some more context around the kind of re engineering that priority list to the dates. I can do that, but you might have a good feel for what that looks like now."
+              },
+              {
+                "speaker_id": 4,
+                "start_time": "00:27:08",
+                "text": "No, I think today's meeting and some additional context is really helpful. We'll take another turn on that scope and turn that back around to you in short order."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:27:16",
+                "text": "Cool."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:27:17",
+                "text": "Hey, Justin, just a quick question there. Will you also include some, like, general pricing or when. When do you want to pull that piece in?"
+              },
+              {
+                "speaker_id": 4,
+                "start_time": "00:27:25",
+                "text": "Yeah, we can do that, too."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:27:27",
+                "text": "Okay. I think that's helpful because most likely we can kind of take it all back and then, you know, start moving on this pretty soon."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:27:36",
+                "text": "Sounds good."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:27:37",
+                "text": "Also, Dan, I realize you joined at some point, and I didn't see exactly when, but thank you for joining. And we can debrief as well. But hopefully this was helpful for you to hear."
+              },
+              {
+                "speaker_id": 4,
+                "start_time": "00:27:47",
+                "text": "Absolutely."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:27:52",
+                "text": "All right."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:27:53",
+                "text": "All right. It's nice to meet you, Keith."
+              },
+              {
+                "speaker_id": 2,
+                "start_time": "00:27:55",
+                "text": "Justin, nice meeting you guys as well."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:27:57",
+                "text": "Yeah."
+              },
+              {
+                "speaker_id": 0,
+                "start_time": "00:27:57",
+                "text": "Thanks, everybody."
+              },
+              {
+                "speaker_id": 1,
+                "start_time": "00:27:58",
+                "text": "Thank you."
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Get meeting from DB": {
+      "main": [
+        [
+          {
+            "node": "Is valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "gpt-4.1-mini": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Process speakers",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Speaker JSON",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process speakers": {
+      "main": [
+        [
+          {
+            "node": "Process transcript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meeting id": {
+      "main": [
+        [
+          {
+            "node": "Get meeting from DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare participants": {
+      "main": [
+        [
+          {
+            "node": "Split contacts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add contact": {
+      "main": [
+        [
+          {
+            "node": "Loop contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add team member": {
+      "main": [
+        [
+          {
+            "node": "Loop team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split contacts": {
+      "main": [
+        [
+          {
+            "node": "Loop contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop contacts": {
+      "main": [
+        [
+          {
+            "node": "Edit contacts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split team": {
+      "main": [
+        [
+          {
+            "node": "Loop team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop team": {
+      "main": [
+        [
+          {
+            "node": "Edit users",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Add team member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Process speakers",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit users": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit contacts": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Aggregate participants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate participants": {
+      "main": [
+        [
+          {
+            "node": "Process speakers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Speaker JSON": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Process speakers",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process transcript": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Mark transcript as processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark transcript as processed": {
+      "main": [
+        [
+          {
+            "node": "Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is valid?": {
+      "main": [
+        [
+          {
+            "node": "Prepare participants",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark transcript as invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark transcript as invalid": {
+      "main": [
+        [
+          {
+            "node": "Output invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "KyIzgmxXYfkkzIk4"
+  },
+  "versionId": "6d0d9d70-8369-4908-9d60-f11f6ab0a4c8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "535bad63c9c52b6977a8baf998b1abee47fd663b1d2f26eee3f9a571ef54d666"
+  },
+  "id": "iTmEBnVk0LWBmBZB",
+  "tags": []
+}

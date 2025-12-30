@@ -1,0 +1,210 @@
+{
+  "name": "🎯 Realistic Sales Call Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "trigger",
+      "name": "Start Test"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Realistic sales call data - as if from Attention API\nconst callDate = new Date('2025-12-02T14:30:00Z');\n\nreturn {\n  json: {\n    // Call metadata\n    call_id: 'att_realistic_test_' + Date.now(),\n    title: 'Acme Corp - Discovery Call - ICHRA Solution',\n    start_time: callDate.toISOString(),\n    duration_seconds: 1847, // ~30 minute call\n    status: 'completed',\n    \n    // Participants\n    participants: [\n      {\n        name: 'Michael Chen',\n        email: 'michael.chen@acmecorp.com',\n        role: 'prospect',\n        title: 'VP of People Operations',\n        company: 'Acme Corp'\n      },\n      {\n        name: 'Lisa Rodriguez',\n        email: 'lisa.rodriguez@acmecorp.com',\n        role: 'prospect',\n        title: 'Benefits Manager',\n        company: 'Acme Corp'\n      },\n      {\n        name: 'Sarah Thompson',\n        email: 'sarah@thatch.ai',\n        role: 'seller',\n        title: 'Senior Account Executive',\n        company: 'Thatch'\n      },\n      {\n        name: 'Tom Wilson',\n        email: 'tom@thatch.ai',\n        role: 'seller',\n        title: 'Solutions Engineer',\n        company: 'Thatch'\n      }\n    ],\n    \n    // Full transcript with realistic sales conversation\n    transcript: {\n      segments: [\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'Hi Michael, Lisa! Thanks so much for joining today. I know your time is valuable, so I want to make sure we cover everything you need. Before we dive in, can you tell me a bit about what prompted you to look at ICHRA solutions right now?',\n          start_time: 15.2,\n          end_time: 32.5,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'Absolutely. So we\\'re a 250-person company, been on traditional group health for years. Our renewal just came back with a 28% increase - it\\'s just not sustainable anymore. We\\'ve been hearing about ICHRA from other companies in our network, and honestly, we\\'re under a lot of pressure from leadership to find a more cost-effective solution.',\n          start_time: 33.1,\n          end_time: 58.4,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Lisa Rodriguez',\n          speaker_email: 'lisa.rodriguez@acmecorp.com',\n          text: 'And I\\'ll add - our employees are not happy. The deductibles keep going up, coverage is getting worse, and we\\'re worried about retention. Our tech team especially is very vocal about benefits.',\n          start_time: 59.2,\n          end_time: 72.8,\n          sentiment: 'negative'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'I completely understand that pain - you\\'re definitely not alone. We\\'re seeing that 25-30% increase across the board this year. The good news is that ICHRA can actually give your employees better coverage while reducing your costs. Let me ask - have you looked at any other solutions, or is Thatch the first ICHRA platform you\\'re exploring?',\n          start_time: 73.5,\n          end_time: 95.2,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'We\\'ve talked to Venteur and we\\'re scheduled to meet with Remodel Health next week. I have to be honest - Venteur\\'s pricing seemed really aggressive. They quoted us about 40% less than what we\\'re paying now. How does Thatch compare?',\n          start_time: 96.1,\n          end_time: 112.7,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'Great question, and I appreciate the directness. Venteur does lead with low pricing, but here\\'s what you need to know - their platform fees don\\'t include things like compliance support, dedicated customer success, or the AI-powered decision tools we provide. When clients do apples-to-apples comparisons including all those services, we\\'re typically within 5-10% of each other, but with significantly better support and technology.',\n          start_time: 113.5,\n          end_time: 142.3,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Tom Wilson',\n          speaker_email: 'tom@thatch.ai',\n          text: 'Let me actually show you what I mean. I\\'ll pull up our platform real quick and walk through a scenario with your actual census data if you\\'ve shared that. Michael, did you send over that census file?',\n          start_time: 143.1,\n          end_time: 156.8,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'Yes, I sent it yesterday. 250 employees across California, Texas, and New York mainly.',\n          start_time: 157.4,\n          end_time: 164.2,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Tom Wilson',\n          speaker_email: 'tom@thatch.ai',\n          text: 'Perfect, I\\'ve got it loaded here. So what\\'s unique about Thatch is our real-time contribution modeling. You can see here - if we set your employer contribution at 85% for a Silver plan, here\\'s exactly what each employee would pay based on their age and location. California employees are more expensive, but we can adjust contributions by state if you want.',\n          start_time: 165.0,\n          end_time: 189.5,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Lisa Rodriguez',\n          speaker_email: 'lisa.rodriguez@acmecorp.com',\n          text: 'That\\'s really cool. Can you show me what happens if we do 90% contribution instead? And what about dependent coverage - that\\'s been a huge issue for us.',\n          start_time: 190.3,\n          end_time: 201.8,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Tom Wilson',\n          speaker_email: 'tom@thatch.ai',\n          text: 'Absolutely. Watch this - I\\'ll move the slider to 90%. You can see the employer cost goes up by about $15K annually, but employee satisfaction would be much higher. For dependents, we typically recommend 60-75% employer contribution. Let me model both scenarios for you.',\n          start_time: 202.5,\n          end_time: 223.7,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'This is helpful. My concern is the transition. We\\'re coming up on January 1st renewal. Is there any way we could make this happen in time, or are we too late?',\n          start_time: 224.5,\n          end_time: 236.9,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'You\\'re actually in a perfect window! Our typical implementation is 6-8 weeks, which puts you right at late January. We\\'d need to move quickly though - ideally get a decision by end of this week to stay on track. I\\'ve had three other clients go live in similar timeframes this year.',\n          start_time: 237.8,\n          end_time: 258.4,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Lisa Rodriguez',\n          speaker_email: 'lisa.rodriguez@acmecorp.com',\n          text: 'What\\'s the pricing structure exactly? Is it per employee per month, or how does it work?',\n          start_time: 259.2,\n          end_time: 266.5,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'It\\'s $68 per enrolled employee per month. That includes our full platform, unlimited support, compliance tools, and the AI decision support. No setup fees, no hidden costs. For 250 employees with typical 92% enrollment, you\\'re looking at about $15,640 monthly platform fee.',\n          start_time: 267.3,\n          end_time: 289.8,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'That\\'s higher than Venteur quoted us. They said $45 per employee.',\n          start_time: 290.6,\n          end_time: 296.2,\n          sentiment: 'negative'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'I hear you. Here\\'s the difference - that $45 doesn\\'t include compliance support, which you\\'ll need and they charge $8-12 per employee for. It also doesn\\'t include a dedicated customer success manager or our AI tools that help employees choose the right plans. When you add those in, most clients find we\\'re actually competitive or even cheaper for the total solution.',\n          start_time: 297.0,\n          end_time: 324.5,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Tom Wilson',\n          speaker_email: 'tom@thatch.ai',\n          text: 'And I can send you a detailed pricing comparison spreadsheet that breaks down exactly what\\'s included in each platform. We\\'re very transparent about this because we know it\\'s important.',\n          start_time: 325.2,\n          end_time: 336.8,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Lisa Rodriguez',\n          speaker_email: 'lisa.rodriguez@acmecorp.com',\n          text: 'That would be helpful. Also, what kind of employee education do you provide? That\\'s been a concern - ICHRA is new to most of our people.',\n          start_time: 337.5,\n          end_time: 348.9,\n          sentiment: 'neutral'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'Excellent question! We provide live webinars, on-demand video content, one-on-one consultation calls, and our platform has an AI assistant that answers questions in real-time. We typically do 3-4 education sessions leading up to enrollment, plus ongoing support.',\n          start_time: 349.7,\n          end_time: 370.2,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'Okay, I think we\\'ve got a good sense of this. What are the next steps if we want to move forward?',\n          start_time: 371.0,\n          end_time: 378.5,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'Great! I\\'ll send over three things today: First, a detailed proposal with pricing breakdown. Second, implementation timeline for Jan 1st go-live. Third, references from similar-sized companies who made the switch. Then let\\'s schedule a follow-up for Friday to address any questions. Does that work?',\n          start_time: 379.3,\n          end_time: 401.8,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Michael Chen',\n          speaker_email: 'michael.chen@acmecorp.com',\n          text: 'Perfect. Friday at 2pm works for us. Looking forward to reviewing everything.',\n          start_time: 402.5,\n          end_time: 408.7,\n          sentiment: 'positive'\n        },\n        {\n          speaker: 'Sarah Thompson',\n          speaker_email: 'sarah@thatch.ai',\n          text: 'Excellent! Talk to you Friday. Thanks Michael, Lisa!',\n          start_time: 409.2,\n          end_time: 413.5,\n          sentiment: 'positive'\n        }\n      ]\n    },\n    \n    // Analysis metadata\n    analysis: {\n      sentiment: 'mostly_positive',\n      sentiment_scores: {\n        positive: 0.65,\n        neutral: 0.28,\n        negative: 0.07\n      },\n      key_topics: ['pricing', 'implementation_timeline', 'competitor_comparison', 'employee_education'],\n      action_items: [\n        'Send detailed proposal with pricing breakdown',\n        'Send implementation timeline for January 1st',\n        'Provide customer references',\n        'Schedule follow-up for Friday at 2pm'\n      ],\n      competitors_mentioned: ['Venteur', 'Remodel Health'],\n      objections_raised: [\n        'Pricing higher than Venteur',\n        'Tight timeline for January implementation',\n        'Employee education concerns'\n      ],\n      buying_signals: [\n        'Asked about next steps',\n        'Engaged with feature questions',\n        'Scheduled follow-up meeting',\n        'Discussed specific implementation dates'\n      ]\n    },\n    \n    recording_url: 'https://example.com/recordings/test-call-123',\n    video_url: 'https://example.com/videos/test-call-123'\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300],
+      "id": "create-realistic-data",
+      "name": "Create Realistic Call Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const call = $json;\n\n// Transform to match Fireflies/Attention schema\nconst speakers = call.participants.map((p, idx) => ({\n  id: idx,\n  name: p.name,\n  first_name: p.name.split(' ')[0],\n  last_name: p.name.split(' ').slice(1).join(' '),\n  email: p.email,\n  title: p.title,\n  organization: p.company,\n  role: p.role === 'prospect' ? 'Prospect' : \n        p.role === 'seller' ? 'Seller' : 'Team'\n}));\n\n// Format segments\nconst segments = call.transcript.segments.map((seg, idx) => {\n  const speaker = speakers.find(s => s.email === seg.speaker_email);\n  \n  return {\n    index: idx,\n    speaker_id: speaker?.id ?? 0,\n    speaker_name: seg.speaker,\n    text: seg.text,\n    start_time: formatTime(seg.start_time),\n    ai_filters: {\n      text_cleanup: seg.text,\n      sentiment: seg.sentiment\n    }\n  };\n});\n\n// Calculate speaker analytics\nconst analytics = {\n  sentiments: call.analysis.sentiment_scores,\n  speakers: speakers.map((speaker, idx) => {\n    const speakerSegments = segments.filter(s => s.speaker_id === idx);\n    const totalWords = speakerSegments.reduce((sum, s) => \n      sum + s.text.split(' ').length, 0\n    );\n    const totalDuration = speakerSegments.reduce((sum, s, i, arr) => {\n      const nextTime = arr[i + 1] ? call.transcript.segments[segments.indexOf(arr[i + 1])].start_time : call.duration_seconds;\n      const currentTime = call.transcript.segments[segments.indexOf(s)].start_time;\n      return sum + (nextTime - currentTime);\n    }, 0);\n    \n    return {\n      speaker_id: idx,\n      name: speaker.name,\n      duration: totalDuration,\n      word_count: totalWords,\n      duration_pct: (totalDuration / call.duration_seconds) * 100,\n      questions: (speakerSegments.filter(s => s.text.includes('?')).length),\n      words_per_minute: totalDuration > 0 ? Math.round(totalWords / (totalDuration / 60)) : 0\n    };\n  })\n};\n\n// Helper function\nfunction formatTime(seconds) {\n  const h = Math.floor(seconds / 3600).toString().padStart(2, '0');\n  const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');\n  const s = Math.floor(seconds % 60).toString().padStart(2, '0');\n  return `${h}:${m}:${s}`;\n}\n\n// Return complete transcript object\nreturn {\n  json: {\n    data: {\n      transcript: {\n        id: call.call_id,\n        title: call.title,\n        dateString: call.start_time,\n        date: call.start_time,\n        duration: call.duration_seconds / 60,\n        \n        // User info (primary rep)\n        user: speakers.find(s => s.role === 'Seller'),\n        \n        // Participants\n        participants: speakers.map(s => s.email),\n        speakers: speakers,\n        \n        // Transcript content\n        sentences: segments,\n        \n        // Summary info\n        summary: {\n          gist: `Discovery call with ${call.participants[0].company}. Discussed ICHRA solution, pricing comparison with Venteur, implementation timeline for January. Strong interest, scheduled follow-up.`,\n          short_summary: call.analysis.action_items.join('. '),\n          action_items: call.analysis.action_items,\n          keywords: call.analysis.key_topics\n        },\n        \n        // Analytics\n        analytics: analytics,\n        \n        // Categories\n        categories: {\n          competitors: call.analysis.competitors_mentioned,\n          objections: call.analysis.objections_raised,\n          buying_signals: call.analysis.buying_signals\n        },\n        \n        // URLs\n        recording_url: call.recording_url,\n        video_url: call.video_url\n      }\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300],
+      "id": "transform-data",
+      "name": "Transform to Schema"
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "transcripts_raw",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source",
+              "fieldValue": "attention"
+            },
+            {
+              "fieldId": "source_id",
+              "fieldValue": "={{ $json.data.transcript.id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.data.transcript.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.data.transcript.date }}"
+            },
+            {
+              "fieldId": "duration_seconds",
+              "fieldValue": "={{ Math.floor($json.data.transcript.duration * 60) }}"
+            },
+            {
+              "fieldId": "raw_data",
+              "fieldValue": "={{ $json.data.transcript }}"
+            },
+            {
+              "fieldId": "source_url",
+              "fieldValue": "={{ $json.data.transcript.recording_url }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "YOUR-TEAM-ID-HERE"
+            },
+            {
+              "fieldId": "is_valid",
+              "fieldValue": "={{ true }}"
+            },
+            {
+              "fieldId": "is_processed",
+              "fieldValue": "={{ false }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [880, 300],
+      "id": "save-raw",
+      "name": "Save to transcripts_raw",
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase (Sales Intelligence)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "tableId": "transcripts_processed",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "original_transcript_id",
+              "fieldValue": "={{ $('Save to transcripts_raw').item.json.id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.data.transcript.title }}"
+            },
+            {
+              "fieldId": "date",
+              "fieldValue": "={{ $json.data.transcript.date }}"
+            },
+            {
+              "fieldId": "duration_seconds",
+              "fieldValue": "={{ Math.floor($json.data.transcript.duration * 60) }}"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "Prospect discovery"
+            },
+            {
+              "fieldId": "speakers",
+              "fieldValue": "={{ $json.data.transcript.speakers }}"
+            },
+            {
+              "fieldId": "accounts",
+              "fieldValue": "={{ [{\"name\": \"Acme Corp\", \"role\": \"Prospect\"}] }}"
+            },
+            {
+              "fieldId": "segments",
+              "fieldValue": "={{ $json.data.transcript.sentences }}"
+            },
+            {
+              "fieldId": "sentiment",
+              "fieldValue": "={{ $json.data.transcript.analytics.sentiments }}"
+            },
+            {
+              "fieldId": "analytics",
+              "fieldValue": "={{ $json.data.transcript.analytics.speakers }}"
+            },
+            {
+              "fieldId": "summaries",
+              "fieldValue": "={{ $json.data.transcript.summary }}"
+            },
+            {
+              "fieldId": "competitors",
+              "fieldValue": "={{ $json.data.transcript.categories.competitors.map(c => ({name: c, context: 'mentioned_in_call'})) }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "YOUR-TEAM-ID-HERE"
+            },
+            {
+              "fieldId": "is_valid",
+              "fieldValue": "={{ true }}"
+            },
+            {
+              "fieldId": "is_summarized",
+              "fieldValue": "={{ false }}"
+            },
+            {
+              "fieldId": "is_vectorized",
+              "fieldValue": "={{ false }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1100, 300],
+      "id": "save-processed",
+      "name": "Save to transcripts_processed",
+      "credentials": {
+        "supabaseApi": {
+          "id": "SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase (Sales Intelligence)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    success: true,\n    raw_id: $('Save to transcripts_raw').item.json.id,\n    processed_id: $json.id,\n    title: $json.title,\n    message: '✅ Realistic test call created!',\n    next_steps: [\n      'This transcript now has all fields filled like a real call',\n      'You can now test: Transcript Summarizer',\n      'Then test: RAG Pipeline',\n      'Then test: Sales Agent queries'\n    ],\n    call_details: {\n      participants: 4,\n      duration: '30 minutes',\n      segments: 20,\n      competitors_mentioned: ['Venteur', 'Remodel Health'],\n      objections: 3,\n      call_type: 'Discovery with pricing discussion'\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 300],
+      "id": "output",
+      "name": "Success Output"
+    }
+  ],
+  "connections": {
+    "Start Test": {
+      "main": [[{"node": "Create Realistic Call Data", "type": "main", "index": 0}]]
+    },
+    "Create Realistic Call Data": {
+      "main": [[{"node": "Transform to Schema", "type": "main", "index": 0}]]
+    },
+    "Transform to Schema": {
+      "main": [[{"node": "Save to transcripts_raw", "type": "main", "index": 0}]]
+    },
+    "Save to transcripts_raw": {
+      "main": [[{"node": "Save to transcripts_processed", "type": "main", "index": 0}]]
+    },
+    "Save to transcripts_processed": {
+      "main": [[{"node": "Success Output", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "tags": []
+}
+

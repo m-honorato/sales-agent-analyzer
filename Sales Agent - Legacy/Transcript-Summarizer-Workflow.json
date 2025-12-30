@@ -1,0 +1,233 @@
+{
+  "name": "Transcript Summarizer (GPT-5.1)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "returnAll": false,
+        "limit": 10,
+        "filterType": "string",
+        "filterString": "is_summarized=eq.false"
+      },
+      "id": "fetch-unsummarized",
+      "name": "Fetch Unsummarized Transcripts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare transcript for GPT analysis\nconst transcript = $input.first().json;\n\n// Format segments into readable conversation\nlet conversation = '';\nif (transcript.segments && Array.isArray(transcript.segments)) {\n  transcript.segments.forEach(seg => {\n    const speaker = seg.speaker_name || seg.speaker_id || 'Unknown';\n    const text = seg.text || seg.raw_text || '';\n    conversation += `${speaker}: ${text}\\n\\n`;\n  });\n}\n\n// If no segments, use any available text\nif (!conversation && transcript.summaries) {\n  conversation = typeof transcript.summaries === 'string' \n    ? transcript.summaries \n    : JSON.stringify(transcript.summaries);\n}\n\nreturn {\n  json: {\n    transcript_id: transcript.id,\n    original_transcript_id: transcript.original_transcript_id,\n    title: transcript.title || 'Sales Call',\n    date: transcript.date,\n    duration_seconds: transcript.duration_seconds,\n    type: transcript.type || 'Sales Call',\n    speakers: transcript.speakers,\n    conversation: conversation || 'No conversation data available',\n    existing_sentiment: transcript.sentiment,\n    existing_analytics: transcript.analytics\n  }\n};"
+      },
+      "id": "prepare-for-gpt",
+      "name": "Prepare for GPT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 4000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert sales analyst and coach. Analyze sales call transcripts and provide actionable insights. Be specific, data-driven, and constructive in your feedback.\n\nYou MUST respond with valid JSON in this exact format:\n{\n  \"executive_summary\": \"2-3 sentence overview of the call\",\n  \"call_outcome\": \"Won\" | \"Lost\" | \"In Progress\" | \"Follow-up Required\",\n  \"deal_stage\": \"Discovery\" | \"Qualification\" | \"Demo\" | \"Proposal\" | \"Negotiation\" | \"Closed\",\n  \"key_insights\": [\n    {\"insight\": \"specific insight\", \"importance\": \"high\" | \"medium\" | \"low\"},\n    ...\n  ],\n  \"action_items\": [\n    {\"action\": \"specific action\", \"owner\": \"Sales Rep\" | \"Prospect\" | \"Both\", \"deadline\": \"timeframe\"},\n    ...\n  ],\n  \"objections_identified\": [\n    {\"objection\": \"the objection\", \"was_handled\": true | false, \"handling_quality\": 1-10},\n    ...\n  ],\n  \"coaching_recommendations\": [\n    {\"area\": \"area to improve\", \"recommendation\": \"specific advice\", \"priority\": \"high\" | \"medium\" | \"low\"},\n    ...\n  ],\n  \"sentiment_analysis\": {\n    \"overall_tone\": \"positive\" | \"neutral\" | \"negative\",\n    \"prospect_engagement\": 1-10,\n    \"rep_confidence\": 1-10,\n    \"buying_signals\": [\"signal 1\", \"signal 2\"]\n  },\n  \"competitor_mentions\": [\n    {\"competitor\": \"name\", \"context\": \"how mentioned\", \"sentiment\": \"positive\" | \"neutral\" | \"negative\"}\n  ],\n  \"next_steps\": \"Clear next steps from the call\",\n  \"deal_risk_score\": 1-10,\n  \"deal_risk_factors\": [\"risk 1\", \"risk 2\"]\n}"
+            },
+            {
+              "role": "user",
+              "content": "=Analyze this sales call:\n\n**Title:** {{ $json.title }}\n**Date:** {{ $json.date }}\n**Duration:** {{ Math.round($json.duration_seconds / 60) }} minutes\n**Type:** {{ $json.type }}\n\n**Speakers:**\n{{ JSON.stringify($json.speakers, null, 2) }}\n\n**Conversation:**\n{{ $json.conversation }}\n\n**Existing Sentiment Data:**\n{{ JSON.stringify($json.existing_sentiment, null, 2) }}\n\nProvide your analysis as JSON:"
+            }
+          ]
+        }
+      },
+      "id": "gpt-analysis",
+      "name": "GPT-5.1 Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "OpenAI Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GPT response and prepare for database\nconst input = $input.first().json;\nconst preparedData = $('Prepare for GPT').first().json;\n\nlet analysis;\ntry {\n  // Handle different response formats\n  let content = input.message?.content || input.text || input.content || input;\n  \n  if (typeof content === 'string') {\n    // Remove markdown code blocks if present\n    content = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n    analysis = JSON.parse(content);\n  } else {\n    analysis = content;\n  }\n} catch (e) {\n  // If parsing fails, create a basic structure\n  analysis = {\n    executive_summary: 'Analysis parsing failed - manual review required',\n    call_outcome: 'In Progress',\n    deal_stage: 'Discovery',\n    key_insights: [],\n    action_items: [],\n    objections_identified: [],\n    coaching_recommendations: [],\n    sentiment_analysis: { overall_tone: 'neutral', prospect_engagement: 5, rep_confidence: 5, buying_signals: [] },\n    competitor_mentions: [],\n    next_steps: 'Review transcript manually',\n    deal_risk_score: 5,\n    deal_risk_factors: ['Analysis failed']\n  };\n}\n\nreturn {\n  json: {\n    transcript_id: preparedData.transcript_id,\n    original_transcript_id: preparedData.original_transcript_id,\n    analysis: analysis,\n    \n    // Flatten key fields for easy querying\n    executive_summary: analysis.executive_summary,\n    call_outcome: analysis.call_outcome,\n    deal_stage: analysis.deal_stage,\n    deal_risk_score: analysis.deal_risk_score,\n    next_steps: analysis.next_steps,\n    \n    // Counts for dashboard\n    insights_count: analysis.key_insights?.length || 0,\n    action_items_count: analysis.action_items?.length || 0,\n    objections_count: analysis.objections_identified?.length || 0,\n    \n    // Sentiment\n    prospect_engagement: analysis.sentiment_analysis?.prospect_engagement || 5,\n    rep_confidence: analysis.sentiment_analysis?.rep_confidence || 5\n  }\n};"
+      },
+      "id": "parse-gpt-response",
+      "name": "Parse GPT Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_processed",
+        "matchingColumns": ["id"],
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.transcript_id }}",
+            "summaries": "={{ $json.analysis }}",
+            "is_summarized": true
+          }
+        }
+      },
+      "id": "update-transcript",
+      "name": "Update Transcript with Summary",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "summaries",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "transcript_id": "={{ $json.original_transcript_id }}",
+            "team_id": "c3ed8a52-5be2-4f21-9e32-ddc8f8cb93ce",
+            "type": "ai_analysis",
+            "content": "={{ JSON.stringify($json.analysis) }}",
+            "metadata": "={{ { model: 'gpt-4o', insights_count: $json.insights_count, action_items_count: $json.action_items_count, deal_risk_score: $json.deal_risk_score } }}"
+          }
+        }
+      },
+      "id": "save-summary",
+      "name": "Save Summary to DB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final summary of what was processed\nconst analysis = $input.first().json;\n\nreturn {\n  json: {\n    status: 'SUCCESS',\n    message: 'Transcript summarized successfully',\n    transcript_id: analysis.transcript_id,\n    summary_preview: {\n      executive_summary: analysis.executive_summary,\n      call_outcome: analysis.call_outcome,\n      deal_stage: analysis.deal_stage,\n      deal_risk_score: analysis.deal_risk_score,\n      insights_found: analysis.insights_count,\n      action_items_found: analysis.action_items_count,\n      objections_found: analysis.objections_count\n    },\n    next_steps: analysis.next_steps\n  }\n};"
+      },
+      "id": "success-output",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch Unsummarized Transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Unsummarized Transcripts": {
+      "main": [
+        [
+          {
+            "node": "Prepare for GPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare for GPT": {
+      "main": [
+        [
+          {
+            "node": "GPT-5.1 Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5.1 Analysis": {
+      "main": [
+        [
+          {
+            "node": "Parse GPT Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse GPT Response": {
+      "main": [
+        [
+          {
+            "node": "Update Transcript with Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Transcript with Summary": {
+      "main": [
+        [
+          {
+            "node": "Save Summary to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Summary to DB": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+
+

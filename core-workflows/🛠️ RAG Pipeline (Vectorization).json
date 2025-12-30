@@ -1,0 +1,368 @@
+{
+  "name": "🛠️ RAG Pipeline (Vectorization)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const transcripts = $input.all();\nconst chunks = [];\n\nfor (const item of transcripts) {\n  const t = item.json;\n  const transcriptId = t.id;\n  const teamId = t.team_id || '';\n  \n  const baseMetadata = {\n    parent_id: transcriptId,\n    title: t.title || 'Unknown',\n    date: t.date || new Date().toISOString(),\n    team_id: teamId,\n    type: t.type || 'Sales Call',\n    speakers: t.speakers || [],\n    duration_seconds: t.duration_seconds || 0\n  };\n  \n  // CHUNK 1: Call Overview (basic info + preview)\n  let summaryContent = `[CALL SUMMARY] ${t.title}\\n`;\n  summaryContent += `Date: ${t.date}\\n`;\n  summaryContent += `Duration: ${Math.round((t.duration_seconds || 0) / 60)} minutes\\n`;\n  summaryContent += `Type: ${t.type || 'Sales Call'}\\n`;\n  \n  if (t.speakers?.length) {\n    summaryContent += `Participants: ${t.speakers.map(s => `${s.name} (${s.role})`).join(', ')}\\n`;\n  }\n  \n  if (t.segments?.length) {\n    summaryContent += `\\nConversation Preview:\\n`;\n    let preview = '';\n    for (const seg of t.segments) {\n      const line = `${seg.speaker_name}: ${seg.text}\\n`;\n      if (preview.length + line.length > 1500) break;\n      preview += line;\n    }\n    summaryContent += preview;\n  }\n  \n  chunks.push({\n    json: {\n      content: summaryContent,\n      metadata: { ...baseMetadata, vector_type: 'summary', chunk_index: 0 },\n      transcript_id: transcriptId\n    }\n  });\n  \n  // CHUNK 2: AI-Generated Insights (from Transcript Summarizer)\n  if (t.ai_summary) {\n    const aiSummary = typeof t.ai_summary === 'string' \n      ? JSON.parse(t.ai_summary) \n      : t.ai_summary;\n    \n    let aiContent = `[AI ANALYSIS] ${t.title}\\n`;\n    \n    if (aiSummary.executive_summary) {\n      aiContent += `\\nEXECUTIVE SUMMARY:\\n${aiSummary.executive_summary}\\n`;\n    }\n    if (aiSummary.key_points) {\n      aiContent += `\\nKEY POINTS:\\n${Array.isArray(aiSummary.key_points) ? aiSummary.key_points.join('\\n- ') : aiSummary.key_points}\\n`;\n    }\n    if (aiSummary.objections) {\n      aiContent += `\\nOBJECTIONS:\\n${Array.isArray(aiSummary.objections) ? aiSummary.objections.join('\\n- ') : aiSummary.objections}\\n`;\n    }\n    if (aiSummary.next_steps) {\n      aiContent += `\\nNEXT STEPS:\\n${Array.isArray(aiSummary.next_steps) ? aiSummary.next_steps.join('\\n- ') : aiSummary.next_steps}\\n`;\n    }\n    if (aiSummary.pain_points) {\n      aiContent += `\\nPAIN POINTS:\\n${Array.isArray(aiSummary.pain_points) ? aiSummary.pain_points.join('\\n- ') : aiSummary.pain_points}\\n`;\n    }\n    if (aiSummary.competitors) {\n      aiContent += `\\nCOMPETITORS MENTIONED:\\n${Array.isArray(aiSummary.competitors) ? aiSummary.competitors.join(', ') : aiSummary.competitors}\\n`;\n    }\n    \n    chunks.push({\n      json: {\n        content: aiContent,\n        metadata: { ...baseMetadata, vector_type: 'ai_analysis', chunk_index: 1 },\n        transcript_id: transcriptId\n      }\n    });\n  }\n  \n  // CHUNK 3+: Conversation chunks (raw dialogue)\n  if (t.segments?.length) {\n    let currentChunk = '';\n    let chunkIndex = t.ai_summary ? 2 : 1;\n    \n    for (const seg of t.segments) {\n      const line = `${seg.speaker_name}: ${seg.text}\\n`;\n      currentChunk += line;\n      \n      if (currentChunk.length > 2000) {\n        chunks.push({\n          json: {\n            content: `[CONVERSATION] ${t.title}\\n${currentChunk}`,\n            metadata: { ...baseMetadata, vector_type: 'conversation', chunk_index: chunkIndex },\n            transcript_id: transcriptId\n          }\n        });\n        currentChunk = '';\n        chunkIndex++;\n      }\n    }\n    \n    if (currentChunk.trim().length > 100) {\n      chunks.push({\n        json: {\n          content: `[CONVERSATION] ${t.title}\\n${currentChunk}`,\n          metadata: { ...baseMetadata, vector_type: 'conversation', chunk_index: chunkIndex },\n          transcript_id: transcriptId\n        }\n      });\n    }\n  }\n}\n\nconsole.log(`Created ${chunks.length} chunks from ${transcripts.length} transcripts`);\nreturn chunks;"
+      },
+      "id": "d14da7f7-2aa2-4060-bf94-b6b8bb921bb9",
+      "name": "Create Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const json = item.json;\n  \n  const embedding = json.data?.[0]?.embedding;\n  const content = json.content;\n  const metadata = json.metadata;\n  const transcriptId = json.transcript_id;\n\n  if (embedding && content && metadata) {\n    results.push({\n      json: {\n        content: content,\n        metadata: metadata,\n        embedding: `[${embedding.join(',')}]`,\n        _transcript_id: transcriptId\n      }\n    });\n  }\n}\n\nconsole.log(`Prepared ${results.length} vector records`);\nreturn results;"
+      },
+      "id": "d2307a2b-19be-4fd2-99f5-29b12263eeb7",
+      "name": "Prepare Vector Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "transcripts_vectorized",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "content",
+              "fieldValue": "={{ $json.content }}"
+            },
+            {
+              "fieldId": "metadata",
+              "fieldValue": "={{ $json.metadata }}"
+            },
+            {
+              "fieldId": "embedding",
+              "fieldValue": "={{ $json.embedding }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ff27d411-52a3-48fd-bb04-e05e37b46e60",
+      "name": "Save to Vector DB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_processed",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.metadata.parent_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "is_vectorized",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "c0016e28-6a2d-4d89-9079-c03afc7d509a",
+      "name": "Mark as Vectorized",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summary output\nconst items = $input.all();\n\nreturn {\n  json: {\n    status: 'SUCCESS',\n    message: 'Transcript vectorized successfully',\n    vectors_created: items.length,\n    ready_for_search: true\n  }\n};"
+      },
+      "id": "2c1e00f1-f2b2-4310-9176-56c6617f95ba",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type ",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "input",
+              "value": "={{ $json.content }}\t"
+            },
+            {
+              "name": "model",
+              "value": "text-embedding-3-small"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1072,
+        144
+      ],
+      "id": "c4edef2a-a15f-4eb1-8f3f-6aa76f4822e8",
+      "name": "OpenAI Embedding",
+      "credentials": {
+        "openAiApi": {
+          "id": "HoYIqUau21IcG0sc",
+          "name": "MH - Thatch OpenAI account - Sales Analyzer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    cost_tracking: {\n      input_tokens: item.json.usage?.prompt_tokens || 0,\n      total_cost: ((item.json.usage?.prompt_tokens || 0) / 1000) * 0.0001\n    }\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        144
+      ],
+      "id": "6b410dc1-7080-4f4b-9896-0df2baf87935",
+      "name": "Log Cost"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "limit": 5,
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "is_summarized",
+              "condition": "eq",
+              "keyValue": "true"
+            },
+            {
+              "keyName": "is_vectorized",
+              "condition": "eq",
+              "keyValue": "false"
+            }
+          ]
+        }
+      },
+      "id": "0da8dbe4-267e-4442-a2df-8d7dc6af7b0d",
+      "name": "Fetch Unsummarized Transcripts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        560,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1552,
+        0
+      ],
+      "id": "38557a2f-1c39-4496-9015-0ecabb2920fe",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-rag-pipeline",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        368,
+        0
+      ],
+      "id": "cb7e63fc-25a3-48b8-aa65-e5085630d621",
+      "name": "Webhook",
+      "webhookId": "6e6ee34e-ad65-4388-a718-4ab91ecb1019"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Create Chunks": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Embedding",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Prepare Vector Record": {
+      "main": [
+        [
+          {
+            "node": "Save to Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Vector DB": {
+      "main": [
+        [
+          {
+            "node": "Mark as Vectorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Vectorized": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embedding": {
+      "main": [
+        [
+          {
+            "node": "Log Cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Cost": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Unsummarized Transcripts": {
+      "main": [
+        [
+          {
+            "node": "Create Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Prepare Vector Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Unsummarized Transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4e1e13cd-b9fe-4807-bf70-47ad87a9a18a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2836d9e4518bfffa2046de9ef15541915a1919fc5bdfe33324d3be96e8a0f05"
+  },
+  "id": "nXc3YfW1LihwjlNJ",
+  "tags": [
+    {
+      "name": "Sales Agent",
+      "id": "jLHt9WYmRv0H8XzL",
+      "updatedAt": "2025-12-02T03:20:38.974Z",
+      "createdAt": "2025-12-02T03:20:38.974Z"
+    }
+  ]
+}

@@ -1,0 +1,419 @@
+{
+  "name": "🧠 Sales Intelligence Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e7e2c3f5-e268-4f08-b230-17280723795c",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "sales-agent-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate the user's question\nconst body = $input.first().json.body;\n\nconst question = body?.question || body?.query || body?.message || '';\nconst filters = body?.filters || {};\n\nif (!question || question.trim() === '') {\n  return {\n    json: {\n      error: true,\n      message: 'Please provide a question in the request body: { \"question\": \"your question here\" }'\n    }\n  };\n}\n\n// Parse date-related terms from the question\nconst questionLower = question.toLowerCase();\nlet fromDate = null;\nlet toDate = null;\n\n// Get current date in UTC\nconst now = new Date();\nconst today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));\n\n// Helper to format date as YYYY-MM-DD\nconst formatDate = (d) => d.toISOString().split('T')[0];\n\n// Parse temporal phrases\nif (questionLower.includes('yesterday')) {\n  const yesterday = new Date(today);\n  yesterday.setUTCDate(yesterday.getUTCDate() - 1);\n  fromDate = formatDate(yesterday);\n  toDate = formatDate(yesterday);\n} else if (questionLower.includes('today')) {\n  fromDate = formatDate(today);\n  toDate = formatDate(today);\n} else if (questionLower.includes('last week') || questionLower.includes('past week')) {\n  const weekAgo = new Date(today);\n  weekAgo.setUTCDate(weekAgo.getUTCDate() - 7);\n  fromDate = formatDate(weekAgo);\n  toDate = formatDate(today);\n} else if (questionLower.includes('this week')) {\n  const startOfWeek = new Date(today);\n  startOfWeek.setUTCDate(startOfWeek.getUTCDate() - startOfWeek.getUTCDay());\n  fromDate = formatDate(startOfWeek);\n  toDate = formatDate(today);\n} else if (questionLower.includes('last month') || questionLower.includes('past month')) {\n  const monthAgo = new Date(today);\n  monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1);\n  fromDate = formatDate(monthAgo);\n  toDate = formatDate(today);\n} else if (questionLower.includes('this month')) {\n  const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));\n  fromDate = formatDate(startOfMonth);\n  toDate = formatDate(today);\n}\n\n// Also check for specific date patterns like \"12/10\" or \"December 10\"\nconst datePatterns = questionLower.match(/(\\d{1,2})[\\/-](\\d{1,2})(?:[\\/-](\\d{2,4}))?/);\nif (datePatterns) {\n  const month = parseInt(datePatterns[1]) - 1;\n  const day = parseInt(datePatterns[2]);\n  let year = datePatterns[3] ? parseInt(datePatterns[3]) : today.getUTCFullYear();\n  if (year < 100) year += 2000;\n  const specificDate = new Date(Date.UTC(year, month, day));\n  fromDate = formatDate(specificDate);\n  toDate = formatDate(specificDate);\n}\n\nreturn {\n  json: {\n    question: question.trim(),\n    filters: {\n      ...filters,\n      from_date: fromDate,\n      to_date: toDate\n    },\n    hasDateFilter: fromDate !== null,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "6f2a0c6d-1e15-4c12-8c53-f11d637da9c8",
+      "name": "Parse Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": \"{{ $json.question }}\"\n}",
+        "options": {}
+      },
+      "id": "45f7b869-8d9c-4810-a0d7-3f16a74dc598",
+      "name": "Embed Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "HoYIqUau21IcG0sc",
+          "name": "MH - Thatch OpenAI account - Sales Analyzer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare the embedding for Supabase vector search\nconst input = $input.first().json;\nconst questionData = $('Parse Question').first().json;\n\nconst embedding = input.data[0].embedding;\n\nreturn {\n  json: {\n    question: questionData.question,\n    embedding: embedding,\n    embedding_string: `[${embedding.join(',')}]`,\n    filters: questionData.filters\n  }\n};"
+      },
+      "id": "64b55da4-3685-4ab2-88d6-241ed89c7a78",
+      "name": "Prepare Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://xusqpirpuncasygbaqme.supabase.co/rest/v1/rpc/search_transcripts",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "YOUR_SUPABASE_SERVICE_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "03cccc69-d9a2-4946-92c4-08f77ec2a74a",
+      "name": "Vector Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const searchResults = $('Vector Search').all().map(i => i.json);\n\nlet context = \"\";\nconst sources = [];\nconst MAX_RESULTS = 10; // Scalable: limit to top 10 most relevant\n\nfor (let i = 0; i < Math.min(searchResults.length, MAX_RESULTS); i++) {\n  const result = searchResults[i];\n  const meta = typeof result.metadata === 'string' \n    ? JSON.parse(result.metadata) \n    : result.metadata || {};\n  \n  context += `\\n========================================\\n`;\n  context += `CALL: ${meta.title || 'Unknown'}\\n`;\n  context += `Type: ${meta.vector_type || 'unknown'} | Chunk: ${meta.chunk_index || 0}\\n`;\n  context += `Date: ${meta.date || 'Unknown'}\\n`;\n  \n  if (meta.speakers?.length) {\n    context += `Participants: ${meta.speakers.map(s => `${s.name} (${s.role})`).join(', ')}\\n`;\n  }\n  \n  context += `\\n${result.content}\\n`;\n  sources.push(meta.title || 'Unknown');\n}\n\nreturn {\n  json: {\n    context: context || \"No relevant calls found.\",\n    sources: [...new Set(sources)],\n    source_count: Math.min(searchResults.length, MAX_RESULTS),\n    question: $('Parse Question').first().json.question\n  }\n};"
+      },
+      "id": "4a94f6f7-3103-4857-bf96-c51d32f49f27",
+      "name": "Format Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {}
+      },
+      "id": "a98231e3-b4d3-4a3a-bc59-fc591cb95947",
+      "name": "Generate Answer (GPT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2224,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "HoYIqUau21IcG0sc",
+          "name": "MH - Thatch OpenAI account - Sales Analyzer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Response - Option 2: Sources List\nconst gptResponse = $input.first().json;\nconst contextData = $('Format Context').first().json;\nconst costData = $('Log Cost').first().json;\n\n// Extract the answer from GPT response\nconst answer = gptResponse.choices?.[0]?.message?.content \n  || gptResponse.message?.content \n  || 'Unable to generate response';\n\n// Get unique sources (call titles) that were used\nconst sources = contextData.sources || [];\nconst uniqueSources = [...new Set(sources)];\n\nreturn {\n  json: {\n    success: true,\n    question: contextData.question,\n    answer: answer,\n    sources: uniqueSources,\n    sources_count: uniqueSources.length,\n    cost: {\n      input_tokens: costData.cost_tracking?.input_tokens || 0,\n      output_tokens: costData.cost_tracking?.output_tokens || 0,\n      total_cost_usd: costData.cost_tracking?.total_cost || 0,\n      model: costData.cost_tracking?.model || 'gpt-5.1'\n    },\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "5bb5f147-d4e0-47c9-9b23-681af0ea4159",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "fc144bad-bd4a-4d8f-91b2-9571b7c61403",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst searchData = $('Build Search Body').first().json;\nconst filters = searchData.filters || {};\n\n// Build date context message if filtering by date\nlet dateContext = '';\nif (filters.from_date) {\n  if (filters.from_date === filters.to_date) {\n    dateContext = `\\n\\nNote: The user is asking about calls from ${filters.from_date}. Focus only on calls from this specific date.`;\n  } else {\n    dateContext = `\\n\\nNote: The user is asking about calls between ${filters.from_date} and ${filters.to_date}. Focus only on calls within this date range.`;\n  }\n}\n\nconst requestBody = {\n  model: \"gpt-5.1\",\n  temperature: 0.3,\n  messages: [\n    {\n      role: \"system\",\n      content: `You are a Sales Intelligence Assistant. Answer questions about sales calls using the provided context. Be specific and cite sources when relevant. When asked about calls from a specific time period (like 'yesterday'), ONLY include calls that match that date - do not include calls from other dates.${dateContext}`\n    },\n    {\n      role: \"user\",\n      content: `Question: ${input.question}\\n\\nContext:\\n${input.context}`\n    }\n  ]\n};\n\nreturn {\n  json: {\n    requestBody: requestBody,\n    question: input.question\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        0
+      ],
+      "id": "d6cc568d-600d-4e4c-b078-4c6b9fb36438",
+      "name": "Build GPT Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get token usage from OpenAI response\nconst response = $input.first().json;\nconst usage = response.usage || {};\n\nconst inputTokens = usage.prompt_tokens || 0;\nconst outputTokens = usage.completion_tokens || 0;\n\n// GPT-5.1 pricing (update if prices change)\nconst INPUT_COST_PER_1K = 0.01;\nconst OUTPUT_COST_PER_1K = 0.03;\n\nconst inputCost = (inputTokens / 1000) * INPUT_COST_PER_1K;\nconst outputCost = (outputTokens / 1000) * OUTPUT_COST_PER_1K;\nconst totalCost = inputCost + outputCost;\n\nconsole.log(`💰 Cost: $${totalCost.toFixed(4)} (${inputTokens} in / ${outputTokens} out)`);\n\nreturn {\n  json: {\n    ...$input.first().json,\n    cost_tracking: {\n      input_tokens: inputTokens,\n      output_tokens: outputTokens,\n      input_cost: inputCost,\n      output_cost: outputCost,\n      total_cost: totalCost,\n      model: 'gpt-5.1',\n      timestamp: new Date().toISOString()\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        0
+      ],
+      "id": "0b0be65e-d288-42d2-b962-908888168d2a",
+      "name": "Log Cost"
+    },
+    {
+      "parameters": {
+        "jsCode": "const questionData = $('Parse Question').first().json;\nconst filters = questionData.filters || {};\n\n// Build the search body with optional date filters\nconst searchBody = {\n  query_embedding: $input.first().json.embedding,\n  match_threshold: 0.3,\n  match_count: filters.from_date ? 50 : 10 // Get more results when date filtering to ensure we have enough matches\n};\n\n// Add date filters if present\nif (filters.from_date) {\n  searchBody.from_date = filters.from_date;\n}\nif (filters.to_date) {\n  searchBody.to_date = filters.to_date;\n}\n\nreturn {\n  json: {\n    body: searchBody,\n    question: $input.first().json.question,\n    hasDateFilter: questionData.hasDateFilter,\n    filters: filters\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "0c8f053a-112c-4e52-aa11-61b3b207f1b9",
+      "name": "Build Search Body"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get ALL items from vector search, not just first\nconst allItems = $input.all().map(i => i.json);\n\n// Extract parent IDs from all search results\nconst parentIds = allItems\n  .map(item => {\n    const meta = typeof item.metadata === 'string' \n      ? JSON.parse(item.metadata) \n      : item.metadata;\n    return meta?.parent_id;\n  })\n  .filter(Boolean);\n\nreturn {\n  json: {\n    parent_ids: parentIds,\n    search_results: allItems\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        0
+      ],
+      "id": "7a19e51b-0af9-4240-afa2-165920599f23",
+      "name": "Get Parent IDs"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "=id=in.({{ $json.parent_ids.join(',') }})"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        0
+      ],
+      "id": "2a68ba34-f13c-4df1-9a84-15b4a93f2312",
+      "name": "Fetch Full Data",
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Question": {
+      "main": [
+        [
+          {
+            "node": "Embed Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Question": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search": {
+      "main": [
+        [
+          {
+            "node": "Build Search Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Search": {
+      "main": [
+        [
+          {
+            "node": "Get Parent IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Context": {
+      "main": [
+        [
+          {
+            "node": "Build GPT Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Answer (GPT)": {
+      "main": [
+        [
+          {
+            "node": "Log Cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build GPT Request": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer (GPT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Cost": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Body": {
+      "main": [
+        [
+          {
+            "node": "Vector Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Parent IDs": {
+      "main": [
+        [
+          {
+            "node": "Fetch Full Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Full Data": {
+      "main": [
+        [
+          {
+            "node": "Format Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4b0507ed-d16d-49bc-a45a-fdf14330b4c6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2836d9e4518bfffa2046de9ef15541915a1919fc5bdfe33324d3be96e8a0f05"
+  },
+  "id": "p4evIPDwGf9rb5Qq",
+  "tags": [
+    {
+      "name": "Sales Agent",
+      "id": "jLHt9WYmRv0H8XzL",
+      "updatedAt": "2025-12-02T03:20:38.974Z",
+      "createdAt": "2025-12-02T03:20:38.974Z"
+    }
+  ]
+}

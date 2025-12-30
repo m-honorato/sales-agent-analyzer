@@ -1,0 +1,238 @@
+{
+  "name": "Sales Intelligence Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "sales-agent-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate the user's question\nconst body = $input.first().json.body;\n\nconst question = body?.question || body?.query || body?.message || '';\nconst filters = body?.filters || {};\n\nif (!question || question.trim() === '') {\n  return {\n    json: {\n      error: true,\n      message: 'Please provide a question in the request body: { \"question\": \"your question here\" }'\n    }\n  };\n}\n\nreturn {\n  json: {\n    question: question.trim(),\n    filters: filters,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "parse-question",
+      "name": "Parse Question",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": \"{{ $json.question }}\"\n}"
+      },
+      "id": "embed-question",
+      "name": "Embed Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE",
+          "name": "OpenAI Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare the embedding for Supabase vector search\nconst input = $input.first().json;\nconst questionData = $('Parse Question').first().json;\n\nconst embedding = input.data[0].embedding;\n\nreturn {\n  json: {\n    question: questionData.question,\n    embedding: embedding,\n    embedding_string: `[${embedding.join(',')}]`,\n    filters: questionData.filters\n  }\n};"
+      },
+      "id": "prepare-search",
+      "name": "Prepare Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/search_transcripts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query_embedding\": {{ $json.embedding_string }},\n  \"match_threshold\": 0.5,\n  \"match_count\": 10\n}"
+      },
+      "id": "vector-search",
+      "name": "Vector Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format search results for GPT context\nconst results = $input.first().json;\nconst questionData = $('Parse Question').first().json;\n\n// Handle both array and single object responses\nconst searchResults = Array.isArray(results) ? results : (results.data || [results]);\n\nif (!searchResults || searchResults.length === 0) {\n  return {\n    json: {\n      question: questionData.question,\n      context: 'No relevant information found in the sales call database.',\n      has_results: false,\n      result_count: 0\n    }\n  };\n}\n\n// Build context from search results\nlet context = 'RELEVANT SALES CALL INFORMATION:\\n\\n';\n\nsearchResults.forEach((result, idx) => {\n  const metadata = typeof result.metadata === 'string' \n    ? JSON.parse(result.metadata) \n    : result.metadata;\n  \n  context += `--- Result ${idx + 1} (Relevance: ${(result.similarity * 100).toFixed(1)}%) ---\\n`;\n  context += `Title: ${metadata?.title || 'Unknown'}\\n`;\n  context += `Date: ${metadata?.date || 'Unknown'}\\n`;\n  context += `Type: ${metadata?.vector_type || 'Unknown'}\\n`;\n  context += `Content: ${result.content}\\n\\n`;\n});\n\nreturn {\n  json: {\n    question: questionData.question,\n    context: context,\n    has_results: true,\n    result_count: searchResults.length\n  }\n};"
+      },
+      "id": "format-context",
+      "name": "Format Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o\",\n  \"temperature\": 0.3,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Sales Intelligence Assistant. Your job is to answer questions about sales calls using the provided context. Be specific, cite the source calls when relevant, and provide actionable insights. If the context doesn't contain enough information to answer the question, say so honestly. Format your responses in a clear, easy-to-read way.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Based on the following sales call data, please answer this question:\\n\\nQUESTION: {{ $json.question }}\\n\\n{{ $json.context }}\"\n    }\n  ]\n}"
+      },
+      "id": "generate-answer",
+      "name": "Generate Answer (GPT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE",
+          "name": "OpenAI Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format final response\nconst gptResponse = $input.first().json;\nconst contextData = $('Format Context').first().json;\n\nconst answer = gptResponse.choices?.[0]?.message?.content || 'Unable to generate response';\n\nreturn {\n  json: {\n    success: true,\n    question: contextData.question,\n    answer: answer,\n    sources_found: contextData.result_count,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Question": {
+      "main": [
+        [
+          {
+            "node": "Embed Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embed Question": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search": {
+      "main": [
+        [
+          {
+            "node": "Vector Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vector Search": {
+      "main": [
+        [
+          {
+            "node": "Format Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Context": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer (GPT)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Answer (GPT)": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
+
+

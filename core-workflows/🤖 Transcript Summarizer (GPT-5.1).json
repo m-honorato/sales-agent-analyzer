@@ -1,0 +1,354 @@
+{
+  "name": "🤖 Transcript Summarizer (GPT-5.1)",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transcripts_processed",
+        "limit": 10,
+        "filterType": "string",
+        "filterString": "is_summarized=eq.false"
+      },
+      "id": "576a43e5-3050-4e09-a5da-02723d7bcae8",
+      "name": "Fetch Unsummarized Transcripts",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        384,
+        -160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare ALL transcripts for GPT analysis\nconst transcripts = $input.all();\n\nreturn transcripts.map(item => {\n  const transcript = item.json;\n  \n  // Format segments into readable conversation\n  let conversation = '';\n  if (transcript.segments && Array.isArray(transcript.segments)) {\n    transcript.segments.forEach(seg => {\n      const speaker = seg.speaker_name || seg.speaker_id || 'Unknown';\n      const text = seg.text || seg.raw_text || '';\n      conversation += `${speaker}: ${text}\\n\\n`;\n    });\n  }\n  \n  // If no segments, use any available text\n  if (!conversation && transcript.summaries) {\n    conversation = typeof transcript.summaries === 'string' \n      ? transcript.summaries \n      : JSON.stringify(transcript.summaries);\n  }\n  \n  return {\n    json: {\n      transcript_id: transcript.id,\n      original_transcript_id: transcript.original_transcript_id,\n      title: transcript.title || 'Sales Call',\n      date: transcript.date,\n      duration_seconds: transcript.duration_seconds,\n      type: transcript.type || 'Sales Call',\n      speakers: transcript.speakers,\n      conversation: conversation || 'No conversation data available',\n      existing_sentiment: transcript.sentiment,\n      existing_analytics: transcript.analytics\n    }\n  };\n});"
+      },
+      "id": "45a3ddb3-ce91-4a03-b1bf-ad191c4d2356",
+      "name": "Prepare for GPT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "GPT-5.1"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an expert sales analyst and coach. Analyze sales call transcripts and provide actionable insights. Be specific, data-driven, and constructive in your feedback.\n\nYou MUST respond with valid JSON in this exact format:\n{\n  \"executive_summary\": \"2-3 sentence overview of the call\",\n  \"call_outcome\": \"Won\" | \"Lost\" | \"In Progress\" | \"Follow-up Required\",\n  \"deal_stage\": \"Discovery\" | \"Qualification\" | \"Demo\" | \"Proposal\" | \"Negotiation\" | \"Closed\",\n  \"key_insights\": [\n    {\"insight\": \"specific insight\", \"importance\": \"high\" | \"medium\" | \"low\"},\n    ...\n  ],\n  \"action_items\": [\n    {\"action\": \"specific action\", \"owner\": \"Sales Rep\" | \"Prospect\" | \"Both\", \"deadline\": \"timeframe\"},\n    ...\n  ],\n  \"objections_identified\": [\n    {\"objection\": \"the objection\", \"was_handled\": true | false, \"handling_quality\": 1-10},\n    ...\n  ],\n  \"coaching_recommendations\": [\n    {\"area\": \"area to improve\", \"recommendation\": \"specific advice\", \"priority\": \"high\" | \"medium\" | \"low\"},\n    ...\n  ],\n  \"sentiment_analysis\": {\n    \"overall_tone\": \"positive\" | \"neutral\" | \"negative\",\n    \"prospect_engagement\": 1-10,\n    \"rep_confidence\": 1-10,\n    \"buying_signals\": [\"signal 1\", \"signal 2\"]\n  },\n  \"competitor_mentions\": [\n    {\"competitor\": \"name\", \"context\": \"how mentioned\", \"sentiment\": \"positive\" | \"neutral\" | \"negative\"}\n  ],\n  \"next_steps\": \"Clear next steps from the call\",\n  \"deal_risk_score\": 1-10,\n  \"deal_risk_factors\": [\"risk 1\", \"risk 2\"]\n}",
+              "role": "system"
+            },
+            {
+              "content": "=Analyze this sales call:\n\n**Title:** {{ $json.title }}\n**Date:** {{ $json.date }}\n**Duration:** {{ Math.round($json.duration_seconds / 60) }} minutes\n**Type:** {{ $json.type }}\n\n**Speakers:**\n{{ JSON.stringify($json.speakers, null, 2) }}\n\n**Conversation:**\n{{ $json.conversation }}\n\n**Existing Sentiment Data:**\n{{ JSON.stringify($json.existing_sentiment, null, 2) }}\n\nProvide your analysis as JSON:"
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 4000,
+          "temperature": 0.3
+        }
+      },
+      "id": "59222e28-9c06-47bf-bebf-a7dea06180a7",
+      "name": "GPT-5.1 Analysis",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        832,
+        -160
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "HoYIqUau21IcG0sc",
+          "name": "MH - Thatch OpenAI account - Sales Analyzer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse GPT Response - process ALL items\nconst items = $input.all();\nconst preparedItems = $('Prepare for GPT').all();\n\nreturn items.map((item, index) => {\n  const response = item.json;\n  const prepared = preparedItems[index]?.json || {};\n  \n  // Extract the message content\n  const content = response.message?.content || response.choices?.[0]?.message?.content || '';\n  \n  // Try to parse as JSON if it looks like JSON\n  let analysis = {};\n  try {\n    // Find JSON in the response\n    const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      analysis = JSON.parse(jsonMatch[0]);\n    }\n  } catch (e) {\n    // If not valid JSON, create structured response from text\n    analysis = {\n      executive_summary: content,\n      raw_response: content\n    };\n  }\n  \n  return {\n    json: {\n      transcript_id: prepared.transcript_id,\n      original_transcript_id: prepared.original_transcript_id,\n      title: prepared.title,\n      analysis: analysis,\n      executive_summary: analysis.executive_summary || '',\n      call_outcome: analysis.call_outcome || '',\n      deal_stage: analysis.deal_stage || '',\n      key_insights: analysis.key_insights || [],\n      next_steps: analysis.next_steps || [],\n      objections: analysis.objections_identified || analysis.objections || [],\n      sentiment_analysis: analysis.sentiment_analysis || {},\n      cost_tracking: item.json.cost_tracking\n    }\n  };\n});"
+      },
+      "id": "62f7f364-1b89-4a2f-8547-1b7ffd8e458f",
+      "name": "Parse GPT Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "transcripts_processed",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.transcript_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "ai_summary",
+              "fieldValue": "={{ JSON.stringify($json.analysis) }}"
+            },
+            {
+              "fieldId": "is_summarized",
+              "fieldValue": "true"
+            }
+          ]
+        }
+      },
+      "id": "ffa1d51b-5718-48ed-91fe-23b29fdeb3a9",
+      "name": "Update Transcript with Summary",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        -160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "summaries",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "transcript_id",
+              "fieldValue": "={{ $('Parse GPT Response').item.json.original_transcript_id }}"
+            },
+            {
+              "fieldId": "team_id",
+              "fieldValue": "c3ed8a52-5be2-4f21-9e32-ddc8f8cb93ce"
+            },
+            {
+              "fieldId": "type",
+              "fieldValue": "ai_analysis"
+            },
+            {
+              "fieldId": "content",
+              "fieldValue": "={{ JSON.stringify($('Parse GPT Response').item.json.analysis) }} (click fx)"
+            },
+            {
+              "fieldId": "metadata",
+              "fieldValue": "={{ { model: 'gpt-5.1', generated_at: new Date().toISOString() } }} (click fx)"
+            }
+          ]
+        }
+      },
+      "id": "f853e34a-4d61-4a9f-a2aa-26e8cde8c687",
+      "name": "Save Summary to DB",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1808,
+        -160
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "0haZjkQijNDAuwqH",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    status: 'SUCCESS',\n    message: 'Transcript summarized successfully',\n    transcript_id: $json.transcript_id,\n    summary_preview: $json.executive_summary || $json.analysis?.executive_summary || 'Summary saved'\n  }\n};"
+      },
+      "id": "70754a3d-9cc6-48ec-8f37-7216b15c8281",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const response = item.json;\n  const usage = response.message?.usage || response.usage || {};\n  \n  const inputTokens = usage.prompt_tokens || 0;\n  const outputTokens = usage.completion_tokens || 0;\n  const totalCost = ((inputTokens * 0.01) + (outputTokens * 0.03)) / 1000;\n  \n  return {\n    json: {\n      ...response,\n      cost_tracking: {\n        input_tokens: inputTokens,\n        output_tokens: outputTokens,\n        total_cost: totalCost,\n        model: 'gpt-5.1'\n      }\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        -160
+      ],
+      "id": "aaab360c-daef-40e7-bfed-181d248a94f9",
+      "name": "Log Cost"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trigger-summarizer",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        160,
+        -160
+      ],
+      "id": "6918cb94-bbac-47eb-988d-8c46b3a43f90",
+      "name": "Webhook",
+      "webhookId": "80656a51-22b4-4fea-9b3e-62e14e0e118a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook-test/trigger-rag-pipeline",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2288,
+        -160
+      ],
+      "id": "ae94d84f-ebff-4048-9d3f-e586f994f81b",
+      "name": "Trigger RAG Pipeline\""
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Fetch Unsummarized Transcripts": {
+      "main": [
+        [
+          {
+            "node": "Prepare for GPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare for GPT": {
+      "main": [
+        [
+          {
+            "node": "GPT-5.1 Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-5.1 Analysis": {
+      "main": [
+        [
+          {
+            "node": "Log Cost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse GPT Response": {
+      "main": [
+        [
+          {
+            "node": "Update Transcript with Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Transcript with Summary": {
+      "main": [
+        [
+          {
+            "node": "Save Summary to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Summary to DB": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Cost": {
+      "main": [
+        [
+          {
+            "node": "Parse GPT Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Unsummarized Transcripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success Output": {
+      "main": [
+        [
+          {
+            "node": "Trigger RAG Pipeline\"",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "606a3e2b-7e66-417a-ac78-9858da679f97",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b2836d9e4518bfffa2046de9ef15541915a1919fc5bdfe33324d3be96e8a0f05"
+  },
+  "id": "L1oeeGH0kzDsr9yw",
+  "tags": [
+    {
+      "updatedAt": "2025-12-02T03:20:38.974Z",
+      "createdAt": "2025-12-02T03:20:38.974Z",
+      "id": "jLHt9WYmRv0H8XzL",
+      "name": "Sales Agent"
+    }
+  ]
+}

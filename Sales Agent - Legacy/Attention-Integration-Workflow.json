@@ -1,0 +1,189 @@
+{
+  "name": "Attention Integration - Fetch & Process Calls",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-node",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.attention.tech/v2/conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-calls",
+      "name": "Fetch Recent Calls",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE",
+          "name": "Attention API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Attention v2 API response\n// Transcript is INCLUDED in the conversation response (attributes.transcript)\nconst response = $input.first().json;\n\nconsole.log('Attention API Response:', JSON.stringify(response, null, 2));\n\n// Handle Attention v2 response structure\nlet conversations = [];\n\nif (response.data && Array.isArray(response.data)) {\n  conversations = response.data;\n} else if (response.conversations && Array.isArray(response.conversations)) {\n  conversations = response.conversations;\n} else if (Array.isArray(response)) {\n  conversations = response;\n} else {\n  conversations = [response];\n}\n\nif (conversations.length === 0) {\n  return {\n    json: {\n      error: true,\n      message: 'No conversations found in Attention',\n      raw_response: response\n    }\n  };\n}\n\nconst conv = conversations[0];\nconst attrs = conv.attributes || conv;\n\n// Extract attendees/participants\nlet participants = [];\nif (attrs.attendees && Array.isArray(attrs.attendees)) {\n  participants = attrs.attendees;\n} else if (conv.attendees && Array.isArray(conv.attendees)) {\n  participants = conv.attendees;\n}\n\n// Build speakers from participants\nconst speakers = participants.map((p, idx) => ({\n  id: idx,\n  name: p.name || p.displayName || `Participant ${idx + 1}`,\n  email: p.email || '',\n  role: p.isHost || p.is_host ? 'Seller' : 'Prospect',\n  organization: p.company || p.organization || ''\n}));\n\n// Default speakers if none found\nif (speakers.length === 0) {\n  speakers.push(\n    { id: 0, name: 'Sales Rep', role: 'Seller', email: '', organization: 'Your Company' },\n    { id: 1, name: 'Prospect', role: 'Prospect', email: '', organization: '' }\n  );\n}\n\n// Extract transcript from attributes (it's embedded in the conversation)\nlet transcriptText = '';\nlet segments = [];\n\nconst transcript = attrs.transcript || conv.transcript;\nif (transcript) {\n  if (typeof transcript === 'string') {\n    transcriptText = transcript;\n  } else if (Array.isArray(transcript)) {\n    // Array of segments/utterances\n    segments = transcript.map((seg, idx) => ({\n      index: idx,\n      speaker_id: seg.speakerId || seg.speaker_id || idx % 2,\n      speaker_name: seg.speakerName || seg.speaker || speakers[idx % speakers.length]?.name || `Speaker ${(idx % 2) + 1}`,\n      text: seg.text || seg.content || seg.transcript || '',\n      start_time: seg.startTime || seg.start || seg.timestamp || 0,\n      end_time: seg.endTime || seg.end || 0\n    }));\n    transcriptText = segments.map(s => `${s.speaker_name}: ${s.text}`).join('\\n');\n  } else if (typeof transcript === 'object') {\n    // Object with text or content\n    transcriptText = transcript.text || transcript.content || JSON.stringify(transcript);\n  }\n}\n\n// Calculate duration\nlet durationSeconds = 0;\nif (attrs.duration) {\n  durationSeconds = typeof attrs.duration === 'number' ? attrs.duration : parseInt(attrs.duration) || 0;\n} else if (attrs.startedAt && attrs.endedAt) {\n  durationSeconds = Math.floor((new Date(attrs.endedAt) - new Date(attrs.startedAt)) / 1000);\n}\n\n// Extract intelligence/insights if available\nconst intelligence = attrs.confirmedExtractedIntelligence || conv.confirmedExtractedIntelligence || [];\n\nconst callId = conv.id || attrs.uuid;\nconst teamId = 'c3ed8a52-5be2-4f21-9e32-ddc8f8cb93ce';\n\nreturn {\n  json: {\n    // For transcripts_raw\n    source: 'attention',\n    source_id: callId,\n    source_url: attrs.publicUrl || `https://app.attention.tech/conversation/${callId}`,\n    title: attrs.title || conv.title || 'Sales Call',\n    date: attrs.startedAt || attrs.createdAt || conv.startedAt || new Date().toISOString(),\n    duration_seconds: durationSeconds,\n    raw_data: {\n      conversation: conv,\n      intelligence: intelligence\n    },\n    team_id: teamId,\n    is_processed: false,\n    \n    // For transcripts_processed\n    processed: {\n      title: attrs.title || conv.title || 'Sales Call',\n      date: attrs.startedAt || attrs.createdAt || conv.startedAt || new Date().toISOString(),\n      duration_seconds: durationSeconds,\n      type: 'Sales Call',\n      speakers: speakers,\n      segments: segments,\n      accounts: [],\n      sentiment: null,\n      analytics: null,\n      source: 'attention',\n      source_id: callId,\n      team_id: teamId,\n      is_valid: true,\n      is_summarized: false\n    },\n    \n    // Full transcript text\n    transcript_text: transcriptText,\n    \n    // Extracted intelligence from Attention\n    intelligence: intelligence,\n    \n    // Metadata\n    call_id: callId,\n    participants_count: participants.length\n  }\n};"
+      },
+      "id": "transform-to-schema",
+      "name": "Transform Conversation Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "transcripts_raw",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "source": "={{ $json.source }}",
+            "source_id": "={{ $json.source_id }}",
+            "source_url": "={{ $json.source_url }}",
+            "title": "={{ $json.title }}",
+            "date": "={{ $json.date }}",
+            "duration_seconds": "={{ $json.duration_seconds }}",
+            "raw_data": "={{ $json.raw_data }}",
+            "team_id": "={{ $json.team_id }}",
+            "is_processed": "={{ $json.is_processed }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "save-raw",
+      "name": "Save to transcripts_raw",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "transcripts_processed",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "title": "={{ $('Transform Conversation Data').first().json.processed.title }}",
+            "date": "={{ $('Transform Conversation Data').first().json.processed.date }}",
+            "duration_seconds": "={{ $('Transform Conversation Data').first().json.processed.duration_seconds }}",
+            "type": "={{ $('Transform Conversation Data').first().json.processed.type }}",
+            "speakers": "={{ $('Transform Conversation Data').first().json.processed.speakers }}",
+            "segments": "={{ $('Transform Conversation Data').first().json.processed.segments }}",
+            "accounts": "={{ $('Transform Conversation Data').first().json.processed.accounts }}",
+            "source": "={{ $('Transform Conversation Data').first().json.processed.source }}",
+            "source_id": "={{ $('Transform Conversation Data').first().json.processed.source_id }}",
+            "team_id": "={{ $('Transform Conversation Data').first().json.processed.team_id }}",
+            "is_valid": "={{ $('Transform Conversation Data').first().json.processed.is_valid }}",
+            "is_summarized": "={{ $('Transform Conversation Data').first().json.processed.is_summarized }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "save-processed",
+      "name": "Save to transcripts_processed",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "REPLACE",
+          "name": "MH - Supabase Sales Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const transformData = $('Transform Conversation Data').first().json;\n\nreturn {\n  json: {\n    status: '✅ SUCCESS',\n    message: 'Attention call imported successfully!',\n    call_id: transformData.call_id,\n    title: transformData.title,\n    date: transformData.date,\n    participants: transformData.participants_count,\n    transcript_preview: transformData.transcript_text ? transformData.transcript_text.substring(0, 500) + '...' : 'No transcript text found',\n    intelligence_items: transformData.intelligence ? transformData.intelligence.length : 0,\n    next_steps: [\n      '1. Run Transcript Summarizer workflow to generate AI summaries',\n      '2. Run RAG Pipeline workflow to create vector embeddings',\n      '3. Ask the Sales Agent questions about this call'\n    ]\n  }\n};"
+      },
+      "id": "success-output",
+      "name": "Success Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Calls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Calls": {
+      "main": [
+        [
+          {
+            "node": "Transform Conversation Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Conversation Data": {
+      "main": [
+        [
+          {
+            "node": "Save to transcripts_raw",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to transcripts_raw": {
+      "main": [
+        [
+          {
+            "node": "Save to transcripts_processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to transcripts_processed": {
+      "main": [
+        [
+          {
+            "node": "Success Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
