@@ -213,3 +213,38 @@ body {
 .animate-slide-up {
   animation: slideUp 0.4s ease-out;
 }
+
+/* Hide scrollbar for mobile team selector */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile-first responsive adjustments */
+@media (max-width: 640px) {
+  .markdown-content h1 { font-size: 1.25em; }
+  .markdown-content h2 { font-size: 1.1em; }
+  .markdown-content h3 { font-size: 1em; }
+  
+  .markdown-content p {
+    font-size: 0.9em;
+    line-height: 1.6;
+  }
+  
+  .markdown-content li {
+    font-size: 0.9em;
+  }
+  
+  .markdown-content table {
+    font-size: 0.85em;
+  }
+  
+  .markdown-content th,
+  .markdown-content td {
+    padding: 0.5em 0.75em;
+  }
+}

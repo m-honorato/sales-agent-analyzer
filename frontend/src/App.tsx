@@ -255,15 +255,21 @@ function App() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-72' : 'w-0'} transition-all duration-300 overflow-hidden flex-shrink-0`}>
+      {/* Sidebar - Hidden on mobile */}
+      <div className={`hidden md:block ${sidebarOpen ? 'w-72' : 'w-0'} transition-all duration-300 overflow-hidden flex-shrink-0`}>
         <div className="h-full bg-white border-r border-slate-200 flex flex-col w-72">
-          {/* Sidebar Header */}
-          <div className="p-4 border-b border-slate-200">
+          {/* Sidebar Header - matches main header height exactly */}
+          <div className="px-4 border-b border-slate-200 flex items-center justify-between h-[57px]">
             <h2 className="text-sm font-semibold text-slate-600 flex items-center gap-2">
               <Clock size={16} />
               Chat History
             </h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
+            >
+              <X size={18} />
+            </button>
           </div>
 
           {/* History List */}
@@ -319,40 +325,45 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
-                <BarChart3 size={18} className="text-white" />
+        <header className="bg-white border-b border-slate-200 px-3 md:px-4 flex items-center justify-between h-[57px]">
+          <div className="flex items-center gap-2 md:gap-3">
+            {/* Menu button - only shows when sidebar is closed, hidden on mobile */}
+            {!sidebarOpen && (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="hidden md:block p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+            <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
+                <BarChart3 size={16} className="text-white md:hidden" />
+                <BarChart3 size={18} className="text-white hidden md:block" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-slate-800">Sales Intelligence</h1>
-                <p className="text-xs text-slate-500">
-                  Powered by GPT-5.1 • {callCount !== null ? `${callCount} calls indexed` : 'Loading...'}
+                <h1 className="text-sm md:text-lg font-semibold text-slate-800">GTM Intelligence</h1>
+                <p className="text-[10px] md:text-xs text-slate-500">
+                  GPT-5.2 • {callCount !== null ? `${callCount} calls` : 'Loading...'}
                 </p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             {/* Team Selector Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setTeamDropdownOpen(!teamDropdownOpen)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${currentTeam.bgColor} ${currentTeam.color} border-current/20`}
+                className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 rounded-lg border transition-all ${currentTeam.bgColor} ${currentTeam.color} border-current/20`}
               >
-                <currentTeam.icon size={14} />
-                <span className="text-xs font-medium">{currentTeam.name}</span>
-                <ChevronDown size={14} className={`transition-transform ${teamDropdownOpen ? 'rotate-180' : ''}`} />
+                <currentTeam.icon size={12} className="md:hidden" />
+                <currentTeam.icon size={14} className="hidden md:block" />
+                <span className="text-[10px] md:text-xs font-medium hidden sm:inline">{currentTeam.name}</span>
+                <ChevronDown size={12} className={`transition-transform ${teamDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               
               {teamDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
+                <div className="absolute right-0 top-full mt-1 w-44 md:w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50">
                   {TEAMS.map((team) => {
                     const TeamIcon = team.icon;
                     return (
@@ -375,7 +386,7 @@ function App() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
               <span className="text-sm text-emerald-600 font-medium">Online</span>
             </div>
@@ -384,25 +395,26 @@ function App() {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto px-3 md:px-4 py-4 md:py-8">
             {messages.length === 0 ? (
               /* Welcome Screen */
-              <div className="text-center py-8">
+              <div className="text-center py-4 md:py-8">
                 {/* Icon */}
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-100 mb-4">
-                  <BarChart3 size={32} className="text-indigo-500" />
+                <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-indigo-100 mb-3 md:mb-4">
+                  <BarChart3 size={24} className="text-indigo-500 md:hidden" />
+                  <BarChart3 size={32} className="text-indigo-500 hidden md:block" />
                 </div>
                 
                 {/* Heading */}
-                <h2 className="text-2xl font-semibold text-slate-800 mb-2">
-                  Sales Intelligence Agent
+                <h2 className="text-xl md:text-2xl font-semibold text-slate-800 mb-1 md:mb-2">
+                  GTM Intelligence Agent
                 </h2>
-                <p className="text-slate-500 max-w-lg mx-auto mb-8">
+                <p className="text-sm md:text-base text-slate-500 max-w-lg mx-auto mb-4 md:mb-8 px-2">
                   Select your team to get insights tailored to your needs
                 </p>
 
-                {/* Team Selector */}
-                <div className="flex justify-center gap-3 mb-8">
+                {/* Team Selector - Scrollable on mobile */}
+                <div className="flex justify-start md:justify-center gap-2 md:gap-3 mb-4 md:mb-8 overflow-x-auto pb-2 px-1 -mx-1 scrollbar-hide">
                   {TEAMS.map((team) => {
                     const TeamIcon = team.icon;
                     const isSelected = selectedTeam === team.id;
@@ -410,40 +422,43 @@ function App() {
                       <button
                         key={team.id}
                         onClick={() => setSelectedTeam(team.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 transition-all ${
+                        className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl border-2 transition-all whitespace-nowrap flex-shrink-0 ${
                           isSelected
                             ? `${team.bgColor} border-current ${team.color} shadow-sm`
                             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                         }`}
                       >
-                        <TeamIcon size={18} />
-                        <span className="font-medium text-sm">{team.name}</span>
+                        <TeamIcon size={16} className="md:hidden" />
+                        <TeamIcon size={18} className="hidden md:block" />
+                        <span className="font-medium text-xs md:text-sm">{team.name}</span>
                       </button>
                     );
                   })}
                 </div>
 
                 {/* Team Description */}
-                <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8 ${currentTeam.bgColor.split(' ')[0]} ${currentTeam.color}`}>
-                  <currentTeam.icon size={16} />
-                  <span className="text-sm font-medium">{currentTeam.description}</span>
+                <div className={`inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 rounded-full mb-4 md:mb-8 ${currentTeam.bgColor.split(' ')[0]} ${currentTeam.color}`}>
+                  <currentTeam.icon size={14} className="md:hidden" />
+                  <currentTeam.icon size={16} className="hidden md:block" />
+                  <span className="text-xs md:text-sm font-medium">{currentTeam.description}</span>
                 </div>
 
                 {/* Question Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 max-w-2xl mx-auto">
                   {currentQuestions.map((card, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleAskQuestion(card.question)}
-                      className="flex flex-col items-start p-5 bg-white rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all text-left group"
+                      className="flex flex-col items-start p-3 md:p-5 bg-white rounded-lg md:rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all text-left group"
                     >
-                      <div className={`p-2 rounded-lg ${card.color} mb-3`}>
-                        <card.icon size={20} />
+                      <div className={`p-1.5 md:p-2 rounded-lg ${card.color} mb-2 md:mb-3`}>
+                        <card.icon size={16} className="md:hidden" />
+                        <card.icon size={20} className="hidden md:block" />
                       </div>
-                      <h3 className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                      <h3 className="font-semibold text-sm md:text-base text-slate-800 group-hover:text-indigo-600 transition-colors">
                         {card.title}
                       </h3>
-                      <p className="text-sm text-slate-500 mt-1">
+                      <p className="text-xs md:text-sm text-slate-500 mt-1">
                         {card.description}
                       </p>
                     </button>
@@ -479,7 +494,7 @@ function App() {
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-slate-200 bg-white p-4">
+        <div className="border-t border-slate-200 bg-white p-2 md:p-4">
           <div className="max-w-4xl mx-auto">
             <QuestionInput
               onSubmit={handleAskQuestion}
