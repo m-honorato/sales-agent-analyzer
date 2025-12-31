@@ -395,26 +395,26 @@ function App() {
 
         {/* Chat Area */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto px-3 md:px-4 py-4 md:py-8">
+          <div className="max-w-4xl mx-auto px-3 md:px-4 py-3 md:py-4">
             {messages.length === 0 ? (
-              /* Welcome Screen */
-              <div className="text-center py-4 md:py-8">
-                {/* Icon */}
-                <div className="inline-flex items-center justify-center w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-indigo-100 mb-3 md:mb-4">
-                  <BarChart3 size={24} className="text-indigo-500 md:hidden" />
-                  <BarChart3 size={32} className="text-indigo-500 hidden md:block" />
+              /* Welcome Screen - Compact layout */
+              <div className="text-center py-2 md:py-4">
+                {/* Icon - Smaller */}
+                <div className="inline-flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-indigo-100 mb-2 md:mb-3">
+                  <BarChart3 size={20} className="text-indigo-500 md:hidden" />
+                  <BarChart3 size={24} className="text-indigo-500 hidden md:block" />
                 </div>
                 
-                {/* Heading */}
-                <h2 className="text-xl md:text-2xl font-semibold text-slate-800 mb-1 md:mb-2">
+                {/* Heading - Smaller */}
+                <h2 className="text-lg md:text-xl font-semibold text-slate-800 mb-1">
                   GTM Intelligence Agent
                 </h2>
-                <p className="text-sm md:text-base text-slate-500 max-w-lg mx-auto mb-4 md:mb-8 px-2">
+                <p className="text-xs md:text-sm text-slate-500 max-w-md mx-auto mb-3 md:mb-4 px-2">
                   Select your team to get insights tailored to your needs
                 </p>
 
-                {/* Team Selector - Scrollable on mobile */}
-                <div className="flex justify-start md:justify-center gap-2 md:gap-3 mb-4 md:mb-8 overflow-x-auto pb-2 px-1 -mx-1 scrollbar-hide">
+                {/* Team Selector - More compact */}
+                <div className="flex justify-start md:justify-center gap-2 mb-3 md:mb-4 overflow-x-auto pb-2 px-1 -mx-1 scrollbar-hide">
                   {TEAMS.map((team) => {
                     const TeamIcon = team.icon;
                     const isSelected = selectedTeam === team.id;
@@ -422,43 +422,43 @@ function App() {
                       <button
                         key={team.id}
                         onClick={() => setSelectedTeam(team.id)}
-                        className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl border-2 transition-all whitespace-nowrap flex-shrink-0 ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 md:py-2 rounded-lg border-2 transition-all whitespace-nowrap flex-shrink-0 text-xs md:text-sm ${
                           isSelected
                             ? `${team.bgColor} border-current ${team.color} shadow-sm`
                             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                         }`}
                       >
-                        <TeamIcon size={16} className="md:hidden" />
-                        <TeamIcon size={18} className="hidden md:block" />
-                        <span className="font-medium text-xs md:text-sm">{team.name}</span>
+                        <TeamIcon size={14} className="md:hidden" />
+                        <TeamIcon size={16} className="hidden md:block" />
+                        <span className="font-medium">{team.name}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Team Description */}
-                <div className={`inline-flex items-center gap-2 px-3 md:px-4 py-1.5 md:py-2 rounded-full mb-4 md:mb-8 ${currentTeam.bgColor.split(' ')[0]} ${currentTeam.color}`}>
-                  <currentTeam.icon size={14} className="md:hidden" />
-                  <currentTeam.icon size={16} className="hidden md:block" />
-                  <span className="text-xs md:text-sm font-medium">{currentTeam.description}</span>
+                {/* Team Description - Smaller */}
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 md:py-1.5 rounded-full mb-3 md:mb-4 ${currentTeam.bgColor.split(' ')[0]} ${currentTeam.color}`}>
+                  <currentTeam.icon size={12} className="md:hidden" />
+                  <currentTeam.icon size={14} className="hidden md:block" />
+                  <span className="text-xs font-medium">{currentTeam.description}</span>
                 </div>
 
-                {/* Question Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 max-w-2xl mx-auto">
+                {/* Question Cards - More compact */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 max-w-xl mx-auto">
                   {currentQuestions.map((card, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleAskQuestion(card.question)}
-                      className="flex flex-col items-start p-3 md:p-5 bg-white rounded-lg md:rounded-xl border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all text-left group"
+                      className="flex flex-col items-start p-3 md:p-4 bg-white rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all text-left group"
                     >
-                      <div className={`p-1.5 md:p-2 rounded-lg ${card.color} mb-2 md:mb-3`}>
-                        <card.icon size={16} className="md:hidden" />
-                        <card.icon size={20} className="hidden md:block" />
+                      <div className={`p-1.5 rounded-md ${card.color} mb-2`}>
+                        <card.icon size={14} className="md:hidden" />
+                        <card.icon size={16} className="hidden md:block" />
                       </div>
-                      <h3 className="font-semibold text-sm md:text-base text-slate-800 group-hover:text-indigo-600 transition-colors">
+                      <h3 className="font-semibold text-sm text-slate-800 group-hover:text-indigo-600 transition-colors">
                         {card.title}
                       </h3>
-                      <p className="text-xs md:text-sm text-slate-500 mt-1">
+                      <p className="text-xs text-slate-500 mt-0.5">
                         {card.description}
                       </p>
                     </button>
