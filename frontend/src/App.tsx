@@ -367,8 +367,8 @@ function App() {
             </div>
 
             <div className="hidden sm:flex items-center gap-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-sm text-emerald-600 font-medium">Online</span>
+              <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              <span className="text-sm text-amber-600 font-medium">Demo Environment</span>
             </div>
           </div>
         </header>
