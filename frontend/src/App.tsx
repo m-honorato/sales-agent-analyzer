@@ -6,7 +6,8 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 import { useSalesAgent } from './hooks/useSalesAgent';
 import type { Message } from './types';
 
-const STATS_WEBHOOK_URL = 'http://localhost:5678/webhook/sales-agent-stats';
+// Hardcoded call count for demo
+const DEMO_CALL_COUNT = 1;
 
 interface HistoryItem {
   id: string;
@@ -158,7 +159,6 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [callCount, setCallCount] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<TeamType>('sales');
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -167,26 +167,6 @@ function App() {
   
   const currentTeam = TEAMS.find(t => t.id === selectedTeam) || TEAMS[0];
   const currentQuestions = TEAM_QUESTIONS[selectedTeam];
-
-  // Fetch call count from n8n webhook
-  useEffect(() => {
-    const fetchCallCount = async () => {
-      try {
-        const response = await fetch(STATS_WEBHOOK_URL);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setCallCount(data.count);
-      } catch (error) {
-        console.error("Failed to fetch call count:", error);
-        setCallCount(null);
-      }
-    };
-    fetchCallCount();
-    const interval = setInterval(fetchCallCount, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -344,7 +324,7 @@ function App() {
               <div>
                 <h1 className="text-sm md:text-lg font-semibold text-slate-800">GTM Intelligence</h1>
                 <p className="text-[10px] md:text-xs text-slate-500">
-                  GPT-5.2 • {callCount !== null ? `${callCount} calls` : 'Loading...'}
+                  GPT-5.2 • {DEMO_CALL_COUNT} call analyzed
                 </p>
               </div>
             </div>
